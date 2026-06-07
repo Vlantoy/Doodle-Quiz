@@ -1,0 +1,183 @@
+@import url("https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Short+Stack&display=swap");
+
+:root {
+  --ink: #2f2a3c;
+  --paper: #fff8e8;
+  --mint: #c6f7e2;
+  --peach: #ffd7ba;
+  --sky: #c8e6ff;
+  --berry: #ff8f9f;
+  --danger: #ff6b6b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(255, 214, 186, 0.6), transparent 35%),
+    radial-gradient(circle at 80% 0%, rgba(200, 230, 255, 0.8), transparent 42%),
+    linear-gradient(140deg, #fffdf6, #f8fffd 55%, #fff2f5);
+  color: var(--ink);
+  font-family: "Patrick Hand", cursive;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 18px 60px;
+}
+
+.title {
+  font-family: "Short Stack", cursive;
+  font-size: clamp(1.8rem, 5vw, 3rem);
+  margin: 0;
+  letter-spacing: 1px;
+}
+
+.subtitle {
+  margin-top: 8px;
+  font-size: 1.15rem;
+}
+
+.card {
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 6px 6px 0 #0000001f;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+}
+
+.grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.input,
+textarea,
+select {
+  width: 100%;
+  border: 2px solid var(--ink);
+  background: white;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 1.05rem;
+}
+
+textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-family: "Short Stack", cursive;
+  font-size: 0.95rem;
+  background: var(--mint);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 #0000002b;
+}
+
+.btn.secondary {
+  background: var(--sky);
+}
+
+.btn.warn {
+  background: var(--peach);
+}
+
+.btn.danger {
+  background: var(--danger);
+  color: white;
+}
+
+.badge {
+  display: inline-block;
+  border: 2px dashed var(--ink);
+  border-radius: 999px;
+  padding: 4px 10px;
+  margin-right: 8px;
+  background: #ffffff7d;
+}
+
+.doodle-board {
+  position: relative;
+  background: repeating-linear-gradient(
+      90deg,
+      rgba(47, 42, 60, 0.06) 0,
+      rgba(47, 42, 60, 0.06) 1px,
+      transparent 1px,
+      transparent 20px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(47, 42, 60, 0.06) 0,
+      rgba(47, 42, 60, 0.06) 1px,
+      transparent 1px,
+      transparent 20px
+    ),
+    #fff;
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  overflow: hidden;
+  min-height: 320px;
+}
+
+.overlay-lock {
+  position: absolute;
+  inset: 0;
+  background: rgba(47, 42, 60, 0.88);
+  color: white;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 18px;
+  z-index: 4;
+}
+
+.players {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.player-pill {
+  border: 2px solid var(--ink);
+  background: white;
+  border-radius: 14px;
+  padding: 8px;
+}
+
+@media (max-width: 860px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
