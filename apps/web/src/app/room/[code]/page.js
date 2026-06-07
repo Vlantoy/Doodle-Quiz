@@ -296,7 +296,6 @@ export default function RoomPage({ params }) {
             {!isHost && <span className="badge">💰 {myBalance} coins</span>}
             {isHost && <span className="badge" style={{ background: "#c6f7e2" }}>HOST 👑</span>}
             {!isHost && isBankrupt && <span className="badge" style={{ background: "#ff6b6b", color: "white" }}>BANKRUPT</span>}
-            {isMockMode && <span className="badge" style={{ background: "#ffd7ba", border: "1.5px solid #2f2a3c", color: "#2f2a3c" }}>Local Sandbox 📴</span>}
           </div>
         </div>
         <Link href="/" className="btn secondary">Leave</Link>

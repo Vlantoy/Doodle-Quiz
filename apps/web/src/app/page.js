@@ -44,12 +44,6 @@ export default function HomePage() {
       <section className="card">
         <h1 className="title">Doodle Quiz Duel</h1>
         <p className="subtitle">Local-first trap puzzles, one-way REST sync, and cute chaos.</p>
-        <div className="row">
-          <span className="badge">Language: English</span>
-          <span className="badge">Realtime: Turn-batch only</span>
-          <span className="badge">Database: {isMockMode ? "Local Sandbox (localStorage) 📴" : "Supabase Direct ⚡"}</span>
-          <span className="badge">API: {apiStatus}</span>
-        </div>
       </section>
 
       <section className="grid grid-2">
