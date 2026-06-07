@@ -3,15 +3,12 @@
   "private": true,
   "version": "1.0.0",
   "workspaces": [
-    "apps/web",
-    "apps/server"
+    "apps/web"
   ],
   "scripts": {
     "dev": "npm run dev -w apps/web",
     "dev:web": "npm run dev -w apps/web",
-    "dev:server": "npm run dev -w apps/server",
-    "build": "npm run build -w apps/web && npm run build -w apps/server",
-    "start": "npm run start -w apps/server",
+    "build": "npm run build -w apps/web",
     "test": "vitest run"
   },
   "devDependencies": {

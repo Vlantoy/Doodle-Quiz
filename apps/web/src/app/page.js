@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getOrCreateUser, saveUser } from "lib/storage";
 import { healthCheck } from "lib/api";
+import { isMockMode } from "lib/supabaseClient";
+
 
 export default function HomePage() {
   const router = useRouter();
@@ -45,6 +47,7 @@ export default function HomePage() {
         <div className="row">
           <span className="badge">Language: English</span>
           <span className="badge">Realtime: Turn-batch only</span>
+          <span className="badge">Database: {isMockMode ? "Local Sandbox (localStorage) 📴" : "Supabase Direct ⚡"}</span>
           <span className="badge">API: {apiStatus}</span>
         </div>
       </section>

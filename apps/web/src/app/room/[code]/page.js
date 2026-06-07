@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { cleanupRoom, getBootstrap, joinRoom, startRound, submitRound } from "lib/api";
+import { cleanupRoom, getBootstrap, joinRoom, startRound, submitRound, updatePlayerBalance } from "lib/api";
 import { getOrCreateUser, saveUser, saveRoomState, getRoomState } from "lib/storage";
+import { isMockMode } from "lib/supabaseClient";
+
 import DoodleCanvas from "components/DoodleCanvas";
 
 /*
@@ -188,14 +190,12 @@ export default function RoomPage({ params }) {
     return () => clearInterval(timerRef.current);
   }, [room?.round_deadline_at]);
 
-  // ── Canvas click handler — stores coords for server-side hit-test ────────────
   function onCanvasSolve(payload) {
     if (!payload || phaseRef.current !== "active") return;
     lastClickRef.current = { rx: payload.rx, ry: payload.ry };
     lastGaugeRef.current = typeof payload.gaugeValue === "number" ? payload.gaugeValue : null;
-    localWinRef.current = true;
+    localWinRef.current = payload.isLocalHit;
     syncPhase("won_waiting");
-    fireSubmit();
   }
 
   // ── Batch submit — reads refs, NOT stale state closure ───────────────────────
@@ -212,35 +212,42 @@ export default function RoomPage({ params }) {
 
     syncPhase("submitting");
     const clampedBet = Math.max(1, Math.min(snapMe.balance, betRef.current));
-    const elapsed    = startMsRef.current ? Date.now() - startMsRef.current : 0;
-    const won        = localWinRef.current;
+    const won        = localWinRef.current ?? false;
+
+    const rawDelta = won ? clampedBet : -clampedBet;
+    const prevBalance = snapMe.balance;
+    const nextBalance = Math.max(0, prevBalance + rawDelta);
+    const nextBankrupt = nextBalance === 0;
+    const actualDelta = nextBalance - prevBalance;
+
+    const result = {
+      resulting_is_win:      won,
+      resulting_balance:     nextBalance,
+      delta:                 actualDelta,
+      rng_factor:            1.0,
+      anti_cheat:            false,
+      bankrupt:              nextBankrupt,
+      roundIndex:            snapRoom.current_round_index,
+    };
 
     try {
-      // Server re-validates the click against the hidden answer zones.
-      // We never send isWin — that's computed authoritatively on the server.
-      const res = await submitRound({
+      // Direct client update to Supabase players table
+      await updatePlayerBalance(
+        user.playerId,
         roomCode,
-        playerId:     user.playerId,
-        playerToken:  playerTokenRef.current,
-        roundIndex:   snapRoom.current_round_index,
-        click:        lastClickRef.current,         // {rx,ry} or null if no click
-        gaugeValue:   lastGaugeRef.current,         // number or null
-        completionMs: won ? elapsed : null,
-        bet:          clampedBet,
-      });
+        nextBalance,
+        nextBankrupt,
+        snapRoom.current_round_index
+      );
 
-      const result = res.result ?? {};
       saveRoomState(roomCode, {
         roundIndex: snapRoom.current_round_index,
-        balance:    result.resulting_balance,
+        balance:    nextBalance,
         lastSubmit: Date.now(),
       });
 
       setRoundResult(result);
-      const left = new Date(snapRoom.round_deadline_at).getTime() - Date.now();
-      if (left <= 0) {
-        syncPhase(result.bankrupt ? "bankrupt" : "results");
-      }
+      syncPhase(nextBankrupt ? "bankrupt" : "results");
       await refreshBootstrap();
       setMsg("Round submitted successfully.");
     } catch (err) {
@@ -289,6 +296,7 @@ export default function RoomPage({ params }) {
             {!isHost && <span className="badge">💰 {myBalance} coins</span>}
             {isHost && <span className="badge" style={{ background: "#c6f7e2" }}>HOST 👑</span>}
             {!isHost && isBankrupt && <span className="badge" style={{ background: "#ff6b6b", color: "white" }}>BANKRUPT</span>}
+            {isMockMode && <span className="badge" style={{ background: "#ffd7ba", border: "1.5px solid #2f2a3c", color: "#2f2a3c" }}>Local Sandbox 📴</span>}
           </div>
         </div>
         <Link href="/" className="btn secondary">Leave</Link>
