@@ -22,8 +22,19 @@ export async function healthCheck() {
 export async function hostRoom(payload) {
   // payload: { hostPlayerId, hostUsername, roundDurationSec, quiz }
   const code = generateRoomCode();
+  const cutoffMs = Date.now() - 6 * 60 * 60 * 1000; // 6 hours threshold
   
   if (isMockMode) {
+    // Clean up expired rooms and players from localStorage
+    const rooms = JSON.parse(localStorage.getItem("cutequiz:mock_rooms") || "[]");
+    const activeRooms = rooms.filter(r => new Date(r.created_at).getTime() > cutoffMs);
+    
+    const activeRoomCodes = activeRooms.map(r => r.code);
+    const players = JSON.parse(localStorage.getItem("cutequiz:mock_players") || "[]");
+    const activePlayers = players.filter(p => activeRoomCodes.includes(p.room_code));
+    
+    localStorage.setItem("cutequiz:mock_players", JSON.stringify(activePlayers));
+
     const newRoom = {
       code,
       host_id: payload.hostPlayerId,
@@ -34,9 +45,8 @@ export async function hostRoom(payload) {
       round_deadline: null,
       created_at: new Date().toISOString()
     };
-    const rooms = JSON.parse(localStorage.getItem("cutequiz:mock_rooms") || "[]");
-    rooms.push(newRoom);
-    localStorage.setItem("cutequiz:mock_rooms", JSON.stringify(rooms));
+    activeRooms.push(newRoom);
+    localStorage.setItem("cutequiz:mock_rooms", JSON.stringify(activeRooms));
 
     return {
       roomCode: code,
@@ -45,6 +55,14 @@ export async function hostRoom(payload) {
       playerToken: "mock-player-token",
       roundDurationSec: payload.roundDurationSec
     };
+  }
+
+  // Clean up expired rooms (created > 6 hours ago) in Supabase database
+  const cutoffIso = new Date(cutoffMs).toISOString();
+  try {
+    await supabase.from("rooms").delete().lt("created_at", cutoffIso);
+  } catch (err) {
+    // Fail silently to not block hosting flow if delete fails
   }
 
   const { error } = await supabase.from("rooms").insert({
@@ -370,4 +388,24 @@ export async function cleanupRoom(payload, hostSecret = "") {
 
   return { cleaned: true };
 }
+
+export async function deletePlayer(playerId, roomCode) {
+  const code = String(roomCode).toUpperCase();
+  if (isMockMode) {
+    const players = JSON.parse(localStorage.getItem("cutequiz:mock_players") || "[]");
+    const filtered = players.filter(p => !(p.id === playerId && p.room_code === code));
+    localStorage.setItem("cutequiz:mock_players", JSON.stringify(filtered));
+    return { success: true };
+  }
+
+  const { error } = await supabase
+    .from("players")
+    .delete()
+    .eq("id", playerId)
+    .eq("room_code", code);
+
+  if (error) throw error;
+  return { success: true };
+}
+
 
