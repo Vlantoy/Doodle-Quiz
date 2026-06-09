@@ -174,6 +174,7 @@ export default function CreatePage() {
   const [draftId,          setDraftId]          = useState(() => randomUUID());
   const [showDrafts,       setShowDrafts]       = useState(false);
   const [savedDrafts,      setSavedDrafts]      = useState([]);
+  const [showHelp,         setShowHelp]         = useState(false);
 
   const q = questions[selectedIdx];
 
@@ -595,7 +596,7 @@ export default function CreatePage() {
                 )}
                 <label style={{ fontSize: "0.82rem", width: 80 }}>
                   <span style={{ opacity: 0.7 }}>Zoom</span>
-                  <input className="input" type="number" step={0.05} min={0.05} max={8} value={q.zoomScale}
+                  <input className="input" type="number" step={0.05} min={0.005} max={200} value={q.zoomScale}
                     onChange={e => updateQ({ zoomScale: parseFloat(e.target.value) || 1 })}
                     style={{ padding: "5px 7px", fontSize: "0.85rem" }} />
                 </label>
@@ -661,6 +662,14 @@ export default function CreatePage() {
                               style={{ width: 28, height: 22, border: "none", padding: 0, cursor: "pointer", borderRadius: 4 }} />
                             <button type="button" className="btn" style={{ padding: "2px 6px", fontSize: "0.7rem", lineHeight: 1 }}
                               onClick={() => patchElement(el.id, { color: undefined })}>Reset</button>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+                            <span style={{ fontSize: "0.78rem", opacity: 0.7 }}>Cỡ chữ:</span>
+                            <input type="range" min={0.4} max={4.0} step={0.1}
+                              value={el.fontSizeScale ?? 1.0}
+                              onChange={e => patchElement(el.id, { fontSizeScale: parseFloat(e.target.value) })}
+                              style={{ flex: 1, accentColor: "#7c3aed" }} />
+                            <span style={{ fontSize: "0.78rem", minWidth: 32 }}>{(el.fontSizeScale ?? 1.0).toFixed(1)}x</span>
                           </div>
                         </>
                       )}
@@ -731,25 +740,62 @@ export default function CreatePage() {
           flex: 1, minWidth: 0, display: "flex", flexDirection: "column",
           padding: "10px 12px", gap: 8, overflowY: "auto",
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <span style={{ fontSize: "0.9rem", fontWeight: "bold" }}>🖼️ Canvas Editor</span>
-            <span style={{ fontSize: "0.78rem", opacity: 0.55 }}>
-              Active: {
-                canvasMode === "draw-freeform" ? "🔷" : 
-                canvasMode === "draw-target" ? "⏹️" : 
-                BLOCK_PALETTE.find(p => p.mode === canvasMode)?.icon
-              }{" "}
-              <strong>
-                {canvasMode === "draw-freeform" ? "Zone (Freeform)" : 
-                 canvasMode === "draw-target" ? "Zone (Rectangle)" : 
-                 (BLOCK_PALETTE.find(p => p.mode === canvasMode)?.label ?? canvasMode)}
-              </strong>
-              {canvasMode === "draw-target"   && " — Drag to draw rectangular target"}
-              {canvasMode === "draw-freeform" && " — Hold & drag to draw freeform polygon"}
-              {canvasMode === "draw-brush"    && " — Hold & drag to paint"}
-              {canvasMode === "place-text"    && " — Click to drop Text Block"}
-              {canvasMode === "place-answer"  && " — Click to drop Answer Block"}
-            </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: "0.9rem", fontWeight: "bold" }}>🖼️ Canvas Editor</span>
+              <span style={{ fontSize: "0.78rem", opacity: 0.55 }}>
+                Active: {
+                  canvasMode === "draw-freeform" ? "🔷" : 
+                  canvasMode === "draw-target" ? "⏹️" : 
+                  BLOCK_PALETTE.find(p => p.mode === canvasMode)?.icon
+                }{" "}
+                <strong>
+                  {canvasMode === "draw-freeform" ? "Zone (Freeform)" : 
+                   canvasMode === "draw-target" ? "Zone (Rectangle)" : 
+                   (BLOCK_PALETTE.find(p => p.mode === canvasMode)?.label ?? canvasMode)}
+                </strong>
+                {canvasMode === "draw-target"   && " — Drag to draw rectangular target"}
+                {canvasMode === "draw-freeform" && " — Hold & drag to draw freeform polygon"}
+                {canvasMode === "draw-brush"    && " — Hold & drag to paint"}
+                {canvasMode === "place-text"    && " — Click to drop Text Block"}
+                {canvasMode === "place-answer"  && " — Click to drop Answer Block"}
+              </span>
+            </div>
+
+            {/* Help popover */}
+            <div style={{ position: "relative" }}>
+              {showHelp && <div onClick={() => setShowHelp(false)} style={{ position: "fixed", inset: 0, zIndex: 998 }} />}
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => setShowHelp(v => !v)}
+                style={{
+                  width: 30, height: 30, borderRadius: "50%", padding: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "1rem", fontWeight: "bold", cursor: "pointer",
+                  position: "relative", zIndex: 999, border: "2px solid #2f2a3c"
+                }}
+                title="Hướng dẫn sử dụng"
+              >
+                ?
+              </button>
+              {showHelp && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 999,
+                  background: "#fffaf0", border: "3px solid #2f2a3c", borderRadius: 14,
+                  padding: 12, width: 280, boxShadow: "4px 4px 0 #0000002a",
+                  fontSize: "0.85rem", lineHeight: 1.6,
+                }}>
+                  <strong style={{ display: "block", marginBottom: 6, fontSize: "0.95rem" }}>ℹ️ Hướng dẫn cách làm</strong>
+                  <ul style={{ margin: 0, paddingLeft: 18, opacity: 0.85, listStyleType: "disc" }}>
+                    <li>Vùng Target (🎯) sẽ <strong>ẩn với người chơi</strong> — đây chính là bẫy (trap).</li>
+                    <li>Đặt <strong>Cover Block</strong> lên trên để người chơi phải kéo ra mới thấy.</li>
+                    <li>Đặt zoom ≤ 0.4 cho phong cách tìm kim đáy bể ("Microscopic Quest").</li>
+                    <li>Thêm <strong>Gauge Slider</strong> để yêu cầu kết hợp kéo thanh trượt + click.</li>
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
 
           {q && (
@@ -775,16 +821,6 @@ export default function CreatePage() {
               onZoomPanChange={({ zoomScale, panOffset }) => updateQ({ zoomScale, panOffset })}
             />
           )}
-
-          <details className="card" style={{ padding: "8px 12px", fontSize: "0.8rem", flexShrink: 0 }}>
-            <summary style={{ cursor: "pointer", fontWeight: "bold", userSelect: "none" }}>ℹ️ How it works</summary>
-            <ul style={{ margin: "6px 0 0", paddingLeft: 18, lineHeight: 1.7, opacity: 0.7 }}>
-              <li>Target zones (🎯 ✏️) are <strong>invisible to players</strong> — this is the trap.</li>
-              <li>Drop an <strong>Answer Block</strong> on top — players drag it away to reveal.</li>
-              <li>Set zoom ≤ 0.4 for "Microscopic Quest" needle-in-a-haystack style.</li>
-              <li>Add a <strong>Gauge Slider</strong> to require a number + click combination.</li>
-            </ul>
-          </details>
         </section>
 
       </div>

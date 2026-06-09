@@ -469,7 +469,8 @@ export default function DoodleCanvas({
     if (!el) return;
     function onWheel(e) {
       e.preventDefault();
-      const newScale = Math.min(8, Math.max(0.08, scaleRef.current + (e.deltaY < 0 ? 0.12 : -0.12)));
+      const factor = e.deltaY < 0 ? 1.15 : 0.85;
+      const newScale = Math.min(200, Math.max(0.005, scaleRef.current * factor));
       doSetScale(newScale);
       if (isCreator) {
         onZoomPanChangeRef.current?.({ zoomScale: newScale, panOffset: panRef.current });
@@ -706,6 +707,7 @@ export default function DoodleCanvas({
         y_ratio: Math.max(0.01, ry - 0.05),
         w_ratio: 0.22,
         h_ratio: 0.10,
+        fontSizeScale: 1.0,
         isMovableByPlayer: isAnswer,
       }]);
       panStartRef.current = null;
@@ -852,6 +854,7 @@ export default function DoodleCanvas({
             y_ratio: Math.max(0, Math.min(0.90, ry - 0.05)),
             w_ratio: 0.22,
             h_ratio: 0.10,
+            fontSizeScale: 1.0,
             isMovableByPlayer: false,
           };
           setLiveElements(prev => { const n = [...prev, newEl]; onElemChangeRef.current?.(n); return n; });
@@ -954,7 +957,7 @@ export default function DoodleCanvas({
         position: "relative",
         outline: "none",
         width: "100%",
-        maxWidth: "480px",
+        maxWidth: isCreator ? "min(100%, calc(100vh - 200px))" : "min(100%, calc(100vh - 280px))",
         margin: "0 auto",
         minHeight: "unset",
       }}
@@ -969,6 +972,7 @@ export default function DoodleCanvas({
           overflow: "hidden",
           background: "transparent",
           outline: "none",
+          containerType: "inline-size",
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -1039,7 +1043,7 @@ export default function DoodleCanvas({
                 : "#ffd7ba",
               padding: el.type === "IMAGE_BLOCK" ? 0 : "5px 8px",
               fontFamily: "Patrick Hand, cursive",
-              fontSize: "0.9rem",
+              fontSize: `${(el.fontSizeScale ?? 1.0) * 3}cqw`,
               cursor: (el.isMovableByPlayer || isCreator) ? "grab" : "default",
               // Use its index in liveElements to stack elements correctly
               zIndex: elementIdx + 2,
@@ -1119,7 +1123,7 @@ export default function DoodleCanvas({
                 style={{                  width: "100%", height: "100%", minHeight: 32,
                   border: "none", outline: "none", resize: "none",
                   background: "transparent", fontFamily: "Patrick Hand, cursive",
-                  fontSize: "0.9rem", textAlign: "center", padding: "2px 4px",
+                  fontSize: `${(el.fontSizeScale ?? 1.0) * 3}cqw`, textAlign: "center", padding: "2px 4px",
                   cursor: "text", boxSizing: "border-box",
                 }}
                 onPointerDown={e => e.stopPropagation()}
@@ -1314,7 +1318,7 @@ export default function DoodleCanvas({
         padding: "6px 12px", borderTop: "2px solid #2f2a3c", background: "#fffdf6",
         display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
       }}>
-        <span className="badge">🔍 {scale.toFixed(2)}×</span>
+        <span className="badge">🔍 {scale < 0.1 ? `${(scale * 100).toFixed(1)}%` : `${Math.round(scale * 100)}%`}</span>
         <button
           type="button" className="btn secondary"
           style={{ padding: "4px 10px", fontSize: "0.82rem" }}
