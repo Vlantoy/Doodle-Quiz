@@ -601,7 +601,35 @@ export default function RoomPage({ params }) {
           {/* ── Canvas area (Left Column: Full Height 1:1, pushed to left) ────────────────────── */}
           <div className="room-canvas-col">
             <div className="room-canvas-wrapper">
-              {question ? (
+              {phase === "lobby" && !room?.round_deadline_at ? (
+                <div className="doodle-board" style={{
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 16,
+                  opacity: 0.85,
+                  textAlign: "center",
+                  padding: 32,
+                }}>
+                  <div style={{ fontSize: "4rem", lineHeight: 1 }}>🎨</div>
+                  <h2 style={{ fontFamily: "Itim, cursive", margin: 0, fontSize: "1.8rem", color: "var(--ink)" }}>
+                    Sẵn sàng chơi!
+                  </h2>
+                  <p style={{ margin: 0, opacity: 0.6, fontSize: "1rem", maxWidth: 320 }}>
+                    {isHost
+                      ? "Bấm Start Quiz ở bảng bên phải để bắt đầu."
+                      : "Đợi host bắt đầu quiz nhé..."}
+                  </p>
+                  <div style={{
+                    display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 4
+                  }}>
+                    <span className="badge" style={{ fontSize: "0.9rem" }}>👥 {players.length} người chơi</span>
+                    <span className="badge" style={{ fontSize: "0.9rem" }}>📝 {totalQ} câu hỏi</span>
+                  </div>
+                </div>
+              ) : question ? (
                 <DoodleCanvas
                   question={question}
                   disabled={canvasDisabled}
@@ -762,51 +790,54 @@ export default function RoomPage({ params }) {
               </div>
 
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <span className="badge">⏱ {(remainingMs / 1000).toFixed(1)}s</span>
-                <span className="badge">Q {(room?.current_round_index ?? 0) + 1}/{totalQ || "?"}</span>
+                {room?.round_deadline_at && <span className="badge">⏱ {(remainingMs / 1000).toFixed(1)}s</span>}
+                {room?.round_deadline_at && <span className="badge">Q {(room?.current_round_index ?? 0) + 1}/{totalQ || "?"}</span>}
                 {!isHost && <span className="badge">💰 {myBalance} coins</span>}
                 {isHost && <span className="badge" style={{ background: "#c6f7e2" }}>HOST 👑</span>}
                 {!isHost && isBankrupt && <span className="badge" style={{ background: "#ff6b6b", color: "white" }}>BANKRUPT</span>}
               </div>
 
-              <div style={{ borderTop: "2px dashed #ccc", paddingTop: 8, marginTop: 4 }}>
-                <h3 style={{ fontSize: "0.95rem", margin: "0 0 6px", color: "var(--ink)", fontFamily: "Fredoka, sans-serif" }}>
-                  🎯 Câu hỏi:
-                </h3>
-                <p style={{ margin: 0, fontSize: "0.95rem", fontWeight: "bold", lineHeight: 1.4 }}>
-                  {isHost ? (
-                    phase === "lobby" ? `📢 Quiz Set: ${room?.quiz_payload?.title || "Untitled"}` : (question?.prompt || "Active Round")
-                  ) : (
-                    phase === "lobby" ? "⏳ Waiting for host to start a round..." : (question?.prompt || "⏳ Waiting for host to start a round...")
-                  )}
-                </p>
+              {/* Only show question section after quiz has started */}
+              {!(phase === "lobby" && !room?.round_deadline_at) && (
+                <div style={{ borderTop: "2px dashed #ccc", paddingTop: 8, marginTop: 4 }}>
+                  <h3 style={{ fontSize: "0.95rem", margin: "0 0 6px", color: "var(--ink)", fontFamily: "Fredoka, sans-serif" }}>
+                    🎯 Câu hỏi:
+                  </h3>
+                  <p style={{ margin: 0, fontSize: "0.95rem", fontWeight: "bold", lineHeight: 1.4 }}>
+                    {isHost ? (
+                      phase === "lobby" ? `📢 Quiz Set: ${room?.quiz_payload?.title || "Untitled"}` : (question?.prompt || "Active Round")
+                    ) : (
+                      phase === "lobby" ? "⏳ Waiting for host to start a round..." : (question?.prompt || "⏳ Waiting for host to start a round...")
+                    )}
+                  </p>
 
-                {isGameFinished && !showFinalLeaderboard && (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      style={{ padding: "3px 8px", fontSize: "0.80rem" }}
-                      disabled={activeQuestionIndex === 0}
-                      onClick={() => setReviewQuestionIndex(activeQuestionIndex - 1)}
-                    >
-                      ◀ Trước
-                    </button>
-                    <span style={{ fontSize: "0.85rem", fontFamily: "Fredoka, sans-serif", fontWeight: "bold" }}>
-                      Câu {activeQuestionIndex + 1}/{totalQ}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      style={{ padding: "3px 8px", fontSize: "0.80rem" }}
-                      disabled={activeQuestionIndex === totalQ - 1}
-                      onClick={() => setReviewQuestionIndex(activeQuestionIndex + 1)}
-                    >
-                      Sau ▶
-                    </button>
-                  </div>
-                )}
-              </div>
+                  {isGameFinished && !showFinalLeaderboard && (
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        style={{ padding: "3px 8px", fontSize: "0.80rem" }}
+                        disabled={activeQuestionIndex === 0}
+                        onClick={() => setReviewQuestionIndex(activeQuestionIndex - 1)}
+                      >
+                        ◀ Trước
+                      </button>
+                      <span style={{ fontSize: "0.85rem", fontFamily: "Fredoka, sans-serif", fontWeight: "bold" }}>
+                        Câu {activeQuestionIndex + 1}/{totalQ}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        style={{ padding: "3px 8px", fontSize: "0.80rem" }}
+                        disabled={activeQuestionIndex === totalQ - 1}
+                        onClick={() => setReviewQuestionIndex(activeQuestionIndex + 1)}
+                      >
+                        Sau ▶
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </article>
 
             {/* Host Controls for Lobby & Results */}

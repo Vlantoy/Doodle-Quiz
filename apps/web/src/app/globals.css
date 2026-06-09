@@ -480,7 +480,7 @@ textarea {
 
 .room-grid .doodle-board {
   border: none !important;
-  border-radius: 0 !important;
+  border-radius: 12px !important;
   box-shadow: none !important;
   height: 100% !important;
   min-height: unset !important;
