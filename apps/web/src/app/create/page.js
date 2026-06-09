@@ -146,6 +146,7 @@ function newQuestion() {
     id: randomUUID(),
     prompt: "",
     note: "",
+    duration: 20,
     canvasImage: "",
     canvasImageFit: "contain",
     zoomScale: 1.0,
@@ -623,6 +624,12 @@ export default function CreatePage() {
                 <textarea value={q.note || ""} onChange={e => updateQ({ note: e.target.value })}
                   placeholder="Giải thích trap hoặc đáp án cho câu hỏi này..."
                   style={{ minHeight: 52, fontSize: "0.85rem", padding: "6px 8px" }} />
+              </label>
+              <label style={{ fontSize: "0.82rem", display: "block", marginTop: 6 }}>
+                <span style={{ opacity: 0.7 }}>Thời gian trả lời (giây)</span>
+                <input type="number" min={5} max={300} value={q.duration ?? 20}
+                  onChange={e => updateQ({ duration: Math.max(5, Number(e.target.value) || 20) })}
+                  style={{ width: "100%", fontSize: "0.85rem", padding: "4px 8px", borderRadius: 8, border: "2px solid #2f2a3c" }} />
               </label>
               <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "0.82rem", marginTop: 6, cursor: "pointer" }}>
                 <input type="checkbox" checked={q.requireSequence ?? false}

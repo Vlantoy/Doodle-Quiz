@@ -436,3 +436,38 @@ textarea {
   }
 }
 
+/* Custom Room Grid and Compact Player Pill Layout */
+.room-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 3.8fr 1.2fr;
+  align-items: start;
+}
+@media (max-width: 1024px) {
+  .room-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sidebar-players {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.player-pill-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 2px solid var(--ink);
+  background: white;
+  border-radius: 12px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15);
+}
+
+

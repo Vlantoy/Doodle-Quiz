@@ -211,7 +211,7 @@ export default function RoomPage({ params }) {
     const nextIdx = snapRoom.current_round_index + 1;
     const total = snapRoom.quiz_payload?.questions?.length ?? 0;
     if (nextIdx >= total) return; // last question — no auto-advance
-    let sec = 5;
+    let sec = 3;
     setAutoSec(sec);
     autoTimerRef.current = setInterval(() => {
       sec -= 1;
@@ -227,6 +227,33 @@ export default function RoomPage({ params }) {
     }, 1000);
     return () => clearInterval(autoTimerRef.current);
   }, [phase]);
+
+  // ── Auto-end round early when all players have submitted ──────────────────────
+  useEffect(() => {
+    if (!isHost || phase !== "active" || !room) return;
+
+    const activePlayers = players.filter(p => !p.is_bankrupt);
+    if (activePlayers.length === 0) return;
+
+    const allSubmitted = activePlayers.every(p => p.last_round_submitted === room.current_round_index);
+    if (allSubmitted) {
+      const nowIso = new Date().toISOString();
+      if (isMockMode) {
+        const rooms = JSON.parse(localStorage.getItem("cutequiz:mock_rooms") || "[]");
+        const idx = rooms.findIndex(r => r.code === roomCode);
+        if (idx !== -1) {
+          rooms[idx].round_deadline = nowIso;
+          localStorage.setItem("cutequiz:mock_rooms", JSON.stringify(rooms));
+          window.dispatchEvent(new Event("storage"));
+        }
+      } else {
+        supabase.from("rooms")
+          .update({ round_deadline: nowIso })
+          .eq("code", roomCode)
+          .then(() => refreshBootstrap());
+      }
+    }
+  }, [bootstrap, isHost, phase, roomCode, room, players]);
 
   // ── Fallback Poll — slower now as we use Realtime for instant synchronization ──
   useEffect(() => {
@@ -366,6 +393,12 @@ export default function RoomPage({ params }) {
       lastGaugeRef.current = typeof payload.gaugeValue === "number" ? payload.gaugeValue : null;
       localWinRef.current = payload.isLocalHit;
       syncPhase("won_waiting");
+
+      // Update submission status in database to notify the host
+      const currentMe = bootstrap?.players?.find(p => p.player_id === user?.playerId);
+      if (currentMe && room) {
+        updatePlayerBalance(user.playerId, roomCode, currentMe.balance, currentMe.is_bankrupt, room.current_round_index).then();
+      }
     }
   }
 
@@ -442,6 +475,12 @@ export default function RoomPage({ params }) {
     lastClickRef.current = playerClicks[0] || { rx: 0.5, ry: 0.5 };
     localWinRef.current = finalWin;
     syncPhase("won_waiting");
+
+    // Update submission status in database to notify the host
+    const currentMe = bootstrap?.players?.find(p => p.player_id === user?.playerId);
+    if (currentMe && room) {
+      updatePlayerBalance(user.playerId, roomCode, currentMe.balance, currentMe.is_bankrupt, room.current_round_index).then();
+    }
   };
 
   // ── Batch submit — reads refs, NOT stale state closure ───────────────────────
@@ -561,7 +600,7 @@ export default function RoomPage({ params }) {
           <button type="button" onClick={handleLeave} className="btn secondary">Leave</button>
         </section>
 
-        <section className="grid grid-2">
+        <section className="room-grid">
           {/* ── Canvas area ────────────────────────────────────────────────────── */}
           <article className="card grid">
             <h2 style={{ margin: "0 0 6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -774,34 +813,34 @@ export default function RoomPage({ params }) {
           </article>
 
           {/* ── Side panel ─────────────────────────────────────────────────────── */}
-          <article className="card grid" style={{ gap: 12 }}>
+          <article className="card grid" style={{ gap: 12, padding: "12px 14px" }}>
 
             {/* Host Controls for Lobby & Results */}
             {isHost && (phase === "lobby" || phase === "results") && (
-              <div className="card" style={{ background: "#fff8e8", border: "2px dashed #2f2a3c" }}>
-                <h3 style={{ margin: "0 0 8px" }}>👑 Host Controls</h3>
+              <div className="card" style={{ background: "#fff8e8", border: "2px dashed #2f2a3c", padding: "10px 12px" }}>
+                <h4 style={{ margin: "0 0 6px", fontSize: "1.05rem" }}>👑 Host Controls</h4>
                 {phase === "lobby" && !room?.round_deadline_at && (
                   <button type="button" className="btn" style={{ width: "100%" }} onClick={hostStartQuiz}>
                     🚀 Start Quiz
                   </button>
                 )}
                 {phase === "results" && room?.current_round_index + 1 < totalQ && (
-                  <p style={{ margin: 0, opacity: 0.8 }}>Next round will start automatically in {autoSec}s...</p>
+                  <p style={{ margin: 0, opacity: 0.8, fontSize: "0.85rem" }}>Next round will start automatically in {autoSec}s...</p>
                 )}
                 {phase === "results" && room?.current_round_index + 1 >= totalQ && (
-                  <p style={{ margin: 0, opacity: 0.8 }}>Quiz completed! Spectate the final leaderboard.</p>
+                  <p style={{ margin: 0, opacity: 0.8, fontSize: "0.85rem" }}>Quiz completed! Spectate the final leaderboard.</p>
                 )}
               </div>
             )}
 
             {/* Player Lobby/Results Status */}
             {!isHost && (phase === "lobby" || phase === "results") && !isBankrupt && (
-              <div className="card" style={{ background: "#f3f4f6", border: "2px dashed #ccc" }}>
-                <h3 style={{ margin: "0 0 6px" }}>⏳ Status</h3>
+              <div className="card" style={{ background: "#f3f4f6", border: "2px dashed #ccc", padding: "10px 12px" }}>
+                <h4 style={{ margin: "0 0 4px", fontSize: "1.05rem" }}>⏳ Status</h4>
                 {phase === "lobby" ? (
-                  <p style={{ margin: 0, opacity: 0.7, fontSize: "0.9rem" }}>Waiting for host to start the quiz...</p>
+                  <p style={{ margin: 0, opacity: 0.7, fontSize: "0.85rem" }}>Waiting for host to start the quiz...</p>
                 ) : (
-                  <p style={{ margin: 0, opacity: 0.7, fontSize: "0.9rem" }}>Round ended. Waiting for next question...</p>
+                  <p style={{ margin: 0, opacity: 0.7, fontSize: "0.85rem" }}>Round ended. Waiting for next question...</p>
                 )}
               </div>
             )}
@@ -814,9 +853,9 @@ export default function RoomPage({ params }) {
               const isMultiple = correctZones.length > 1;
 
               return (
-                <div className="card" style={{ background: "#fff8e8", border: "2px dashed #2f2a3c" }}>
-                  <h3 style={{ margin: "0 0 8px" }}>💰 Place Your Bet</h3>
-                  <p style={{ margin: "0 0 8px", fontSize: "0.9rem" }}>
+                <div className="card" style={{ background: "#fff8e8", border: "2px dashed #2f2a3c", padding: "10px 12px" }}>
+                  <h4 style={{ margin: "0 0 6px", fontSize: "1.05rem" }}>💰 Place Your Bet</h4>
+                  <p style={{ margin: "0 0 6px", fontSize: "0.82rem" }}>
                     Balance: <strong>{myBalance}</strong> · Bet: 1–{myBalance}
                   </p>
                   <input
@@ -903,34 +942,41 @@ export default function RoomPage({ params }) {
                 </div>
               ) : (
                 <>
-                  <h3 style={{ margin: "0 0 8px" }}>Host &amp; Players ({players.length + 1})</h3>
-                  <div className="players">
+                  <h4 style={{ margin: "0 0 6px", fontSize: "0.95rem" }}>Host &amp; Players ({players.length + 1})</h4>
+                  <div className="sidebar-players">
                     {/* Host Pill */}
-                    <div className="player-pill" style={{
+                    <div className="player-pill-compact" style={{
                       borderColor: isHost ? "#ff8f9f" : undefined,
                       borderWidth: isHost ? 3 : undefined,
                       background: "#c6f7e2",
                     }}>
-                      <div style={{ fontSize: "0.72rem", opacity: 0.6 }}>👑</div>
-                      <strong>{room?.host_username || "Host"}</strong>
-                      {isHost && <span style={{ fontSize: "0.7rem" }}> (you)</span>}
-                      <span style={{ fontSize: "0.75rem", color: "#065f46" }}> HOST</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ fontSize: "0.72rem", opacity: 0.6 }}>👑</div>
+                        <strong>{room?.host_username || "Host"}</strong>
+                        {isHost && <span style={{ fontSize: "0.7rem" }}> (you)</span>}
+                      </div>
+                      <span style={{ fontSize: "0.75rem", color: "#065f46", fontWeight: "bold" }}>HOST</span>
                     </div>
 
                     {/* Player Pills */}
                     {players.map(p => {
                       const isMe = p.player_id === user?.playerId;
+                      const showBalance = isMe || isHost || phase === "lobby" || phase === "results" || isGameFinished;
                       return (
-                        <div key={p.player_id} className="player-pill" style={{
+                        <div key={p.player_id} className="player-pill-compact" style={{
                           opacity: p.is_bankrupt ? 0.4 : 1,
                           borderColor: isMe ? "#ff8f9f" : undefined,
                           borderWidth: isMe ? 3 : undefined,
                         }}>
-                          <div style={{ fontSize: "0.72rem", opacity: 0.6 }}>{p.avatar_seed}</div>
-                          <strong>{p.username}</strong>
-                          {isMe && <span style={{ fontSize: "0.7rem" }}> (you)</span>}
-                          <div>💰 {isMe ? p.balance : "?"}</div>
-                          {p.is_bankrupt && <div style={{ color: "#ff6b6b", fontSize: "0.75rem" }}>Bankrupt</div>}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <div style={{ fontSize: "0.72rem", opacity: 0.6 }}>{p.avatar_seed}</div>
+                            <strong>{p.username}</strong>
+                            {isMe && <span style={{ fontSize: "0.7rem" }}> (you)</span>}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <div>💰 {showBalance ? p.balance : "?"}</div>
+                            {p.is_bankrupt && <div style={{ color: "#ff6b6b", fontSize: "0.75rem", fontWeight: "bold" }}>Bankrupt</div>}
+                          </div>
                         </div>
                       );
                     })}

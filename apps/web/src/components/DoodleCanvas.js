@@ -1123,7 +1123,7 @@ export default function DoodleCanvas({
         position: "relative",
         outline: "none",
         width: "100%",
-        maxWidth: isCreator ? "min(100%, calc(100vh - 200px))" : "min(100%, calc(100vh - 280px))",
+        maxWidth: isCreator ? "min(100%, calc(100vh - 200px))" : "min(100%, calc(100vh - 160px))",
         margin: "0 auto",
         minHeight: "unset",
       }}

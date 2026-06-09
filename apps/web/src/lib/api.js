@@ -260,7 +260,9 @@ export async function startRound(payload, hostSecret = "") {
     const roomIdx = rooms.findIndex(r => r.code === code);
     if (roomIdx === -1) throw new Error("ROOM_NOT_FOUND");
 
-    const durationSec = rooms[roomIdx].round_duration || 20;
+    const questions = rooms[roomIdx].quiz_data?.questions ?? [];
+    const activeQ = questions[payload.roundIndex];
+    const durationSec = activeQ?.duration ? Number(activeQ.duration) : (rooms[roomIdx].round_duration || 20);
     const deadlineAt = new Date(Date.now() + durationSec * 1000).toISOString();
 
     rooms[roomIdx].current_round = payload.roundIndex;
@@ -285,16 +287,18 @@ export async function startRound(payload, hostSecret = "") {
     };
   }
 
-  // Get round duration first
+  // Get round duration and quiz_data first
   const { data: room, error: fetchError } = await supabase
     .from("rooms")
-    .select("round_duration")
+    .select("round_duration, quiz_data")
     .eq("code", code)
     .single();
 
   if (fetchError) throw fetchError;
 
-  const durationSec = room.round_duration || 20;
+  const questions = room.quiz_data?.questions ?? [];
+  const activeQ = questions[payload.roundIndex];
+  const durationSec = activeQ?.duration ? Number(activeQ.duration) : (room.round_duration || 20);
   const deadlineAt = new Date(Date.now() + durationSec * 1000).toISOString();
 
   // Update room with round index and deadline
