@@ -596,186 +596,195 @@ export default function RoomPage({ params }) {
 
   return (
     <>
-      <main className="room-shell" style={{ "--canvas-max-width": canvasMaxWidth }}>
+      <main className="room-shell">
         <section className="room-grid">
           {/* ── Canvas area (Left Column: Full Height 1:1, pushed to left) ────────────────────── */}
           <div className="room-canvas-col">
-            <div className="room-canvas-wrapper">
-              {phase === "lobby" && !room?.round_deadline_at ? (
-                <div className="doodle-board" style={{
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 16,
-                  opacity: 0.85,
-                  textAlign: "center",
-                  padding: 32,
-                }}>
-                  <div style={{ fontSize: "4rem", lineHeight: 1 }}>🎨</div>
-                  <h2 style={{ fontFamily: "Itim, cursive", margin: 0, fontSize: "1.8rem", color: "var(--ink)" }}>
-                    Sẵn sàng chơi!
-                  </h2>
-                  <p style={{ margin: 0, opacity: 0.6, fontSize: "1rem", maxWidth: 320 }}>
-                    {isHost
-                      ? "Bấm Start Quiz ở bảng bên phải để bắt đầu."
-                      : "Đợi host bắt đầu quiz nhé..."}
-                  </p>
-                  <div style={{
-                    display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 4
-                  }}>
-                    <span className="badge" style={{ fontSize: "0.9rem" }}>👥 {players.length} người chơi</span>
-                    <span className="badge" style={{ fontSize: "0.9rem" }}>📝 {totalQ} câu hỏi</span>
-                  </div>
-                </div>
-              ) : question ? (
-                <DoodleCanvas
-                  question={question}
-                  disabled={canvasDisabled}
-                  onSolve={onCanvasSolve}
-                  isCreator={false}
-                  revealAnswers={phase === "results" || phase === "bankrupt" || isGameFinished}
-                  playerClicks={playerClicks}
-                />
-              ) : (
-                <div className="doodle-board" style={{ height: "100%", display: "grid", placeItems: "center", opacity: 0.4 }}>
-                  <p>No question active</p>
-                </div>
-              )}
-
-              {/* SUBMITTED BLACKOUT: prevent answer leaking to nearby players */}
-              {phase === "won_waiting" && (
-                <div style={{ ...overlayBase, background: "linear-gradient(135deg,#1e1232f0,#2d1b4ef0)" }}>
-                  <div>
-                    <div style={{ fontSize: "3.5rem", lineHeight: 1 }}>📥</div>
-                    <h2 style={{ fontFamily: "Itim, cursive", margin: "12px 0 6px", fontSize: "1.8rem" }}>
-                      SUBMITTED!
-                    </h2>
-                    <p style={{ opacity: 0.8 }}>Waiting for other players...</p>
-                    <p style={{ opacity: 0.45, fontSize: "0.9rem" }}>⏱ {(remainingMs / 1000).toFixed(1)}s left</p>
-                  </div>
-                </div>
-              )}
-
-              {/* TIME OUT / SUBMITTING */}
-              {phase === "submitting" && (
-                <div style={{ ...overlayBase, background: "linear-gradient(135deg,#1a1a1af0,#2f2a3cf0)" }}>
-                  <div>
-                    <div style={{ fontSize: "3rem" }}>⏰</div>
-                    <h2 style={{ fontFamily: "Itim, cursive", margin: "12px 0 6px" }}>TIME OUT!</h2>
-                    <p style={{ opacity: 0.7 }}>Verifying your nhân phẩm...</p>
-                    <p style={{ opacity: 0.4, fontSize: "0.85rem" }}>Syncing with server...</p>
-                  </div>
-                </div>
-              )}
-
-              {/* ROUND RESULTS */}
-              {phase === "results" && roundResult && showOverlay && (
+            {phase === "lobby" && !room?.round_deadline_at ? (
+              /* ── Lobby Waiting Screen ── */
+              <div style={{
+                width: "min(100%, calc(100vh - 32px))",
+                aspectRatio: "1 / 1",
+                border: "3px solid var(--ink)",
+                borderRadius: 18,
+                background: "white",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 16,
+                textAlign: "center",
+                padding: 32,
+                boxSizing: "border-box",
+              }}>
+                <div style={{ fontSize: "4rem", lineHeight: 1 }}>🎨</div>
+                <h2 style={{ fontFamily: "Itim, cursive", margin: 0, fontSize: "1.8rem", color: "var(--ink)" }}>
+                  Sẵn sàng chơi!
+                </h2>
+                <p style={{ margin: 0, opacity: 0.6, fontSize: "1rem", maxWidth: 320 }}>
+                  {isHost
+                    ? "Bấm Start Quiz ở bảng bên phải để bắt đầu."
+                    : "Đợi host bắt đầu quiz nhé..."}
+                </p>
                 <div style={{
-                  ...overlayBase,
-                  background: roundResult.resulting_is_win
-                    ? "linear-gradient(135deg,#064e3bf0,#065f46f0)"
-                    : "linear-gradient(135deg,#7f1d1df0,#991b1bf0)",
+                  display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 4
                 }}>
-                  <div>
-                    {roundResult.resulting_is_win ? (
-                      <>
-                        <div style={{ fontSize: "3rem" }}>✨</div>
-                        <h2 style={{ fontFamily: "Itim, cursive", margin: "10px 0 6px" }}>ROUND WIN!</h2>
-                        <p>RNG ×{Number(roundResult.rng_factor ?? 0).toFixed(2)}</p>
-                        <p style={{ fontSize: "1.5rem", fontWeight: "bold" }}>+{roundResult.delta} coins</p>
-                      </>
-                    ) : (
-                      <>
-                        <div style={{ fontSize: "3rem" }}>{roundResult.anti_cheat ? "🚨" : "💀"}</div>
-                        <h2 style={{ fontFamily: "Itim, cursive", margin: "10px 0 6px" }}>
-                          {roundResult.anti_cheat ? "ANTI-CHEAT TRIGGERED" : "ROUND LOSS"}
-                        </h2>
-                        {roundResult.anti_cheat && (
-                          <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>Bet was invalid. Balance reset to 0.</p>
-                        )}
-                        <p style={{ fontSize: "1.5rem", fontWeight: "bold" }}>{roundResult.delta} coins</p>
-                      </>
-                    )}
-                    <p style={{ marginTop: 10, opacity: 0.85 }}>
-                      Balance: <strong>{roundResult.resulting_balance}</strong> coins
-                    </p>
-
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      style={{
-                        marginTop: 10,
-                        background: "rgba(255, 255, 255, 0.2)",
-                        color: "white",
-                        borderColor: "rgba(255, 255, 255, 0.4)",
-                        width: "100%",
-                        fontFamily: "Patrick Hand, cursive",
-                      }}
-                      onClick={() => setShowOverlay(false)}
-                    >
-                      👁 View Canvas &amp; Answer
-                    </button>
-
-                    {isHost && room?.current_round_index + 1 >= totalQ ? (
-                      <button type="button" className="btn danger" style={{ marginTop: 14 }} onClick={endRoom}>🏁 End Room</button>
-                    ) : isHost && autoSec > 0 ? (
-                      <p style={{ marginTop: 12, opacity: 0.75, fontSize: "0.95rem" }}>⏭ Next question in <strong>{autoSec}s</strong>...</p>
-                    ) : (
-                      <p style={{ marginTop: 12, opacity: 0.5, fontSize: "0.85rem" }}>Waiting for next question...</p>
-                    )}
-                  </div>
+                  <span className="badge" style={{ fontSize: "0.9rem" }}>👥 {players.length} người chơi</span>
+                  <span className="badge" style={{ fontSize: "0.9rem" }}>📝 {totalQ} câu hỏi</span>
                 </div>
-              )}
-
-              {/* BANKRUPT */}
-              {phase === "bankrupt" && showOverlay && (
-                <div style={{ ...overlayBase, background: "linear-gradient(135deg,#7f1d1df0,#450a0af0)" }}>
-                  <div>
-                    <div style={{ fontSize: "3.5rem" }}>💸</div>
-                    <h2 style={{ fontFamily: "Itim, cursive", margin: "12px 0 6px" }}>BANKRUPT!</h2>
-                    <p>You ran out of coins and are eliminated.</p>
-                    <p style={{ opacity: 0.55, fontSize: "0.85rem" }}>Spectate the remaining rounds.</p>
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      style={{
-                        marginTop: 14,
-                        background: "rgba(255, 255, 255, 0.2)",
-                        color: "white",
-                        borderColor: "rgba(255, 255, 255, 0.4)",
-                        width: "100%",
-                        fontFamily: "Patrick Hand, cursive",
-                      }}
-                      onClick={() => setShowOverlay(false)}
-                    >
-                      👁 View Canvas &amp; Answer
-                    </button>
+              </div>
+            ) : (
+              /* ── Active Game Canvas ── */
+              <div style={{ position: "relative", width: "min(100%, calc(100vh - 32px))" }}>
+                {question ? (
+                  <DoodleCanvas
+                    question={question}
+                    disabled={canvasDisabled}
+                    onSolve={onCanvasSolve}
+                    isCreator={false}
+                    revealAnswers={phase === "results" || phase === "bankrupt" || isGameFinished}
+                    playerClicks={playerClicks}
+                  />
+                ) : (
+                  <div className="doodle-board" style={{ minHeight: 200, display: "grid", placeItems: "center", opacity: 0.4 }}>
+                    <p>No question active</p>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* FLOATING SHOW RESULTS BUTTON */}
-              {!showOverlay && (phase === "results" || phase === "bankrupt") && (
-                <button
-                  type="button"
-                  className="btn secondary"
-                  style={{
-                    position: "absolute",
-                    top: 12,
-                    right: 12,
-                    zIndex: 15,
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
-                    fontFamily: "Patrick Hand, cursive",
-                    padding: "6px 12px",
-                  }}
-                  onClick={() => setShowOverlay(true)}
-                >
-                  📊 Show Stats
-                </button>
-              )}
-            </div>
+                {/* SUBMITTED BLACKOUT */}
+                {phase === "won_waiting" && (
+                  <div style={{ ...overlayBase, background: "linear-gradient(135deg,#1e1232f0,#2d1b4ef0)", borderRadius: 18 }}>
+                    <div>
+                      <div style={{ fontSize: "3.5rem", lineHeight: 1 }}>📥</div>
+                      <h2 style={{ fontFamily: "Itim, cursive", margin: "12px 0 6px", fontSize: "1.8rem" }}>
+                        SUBMITTED!
+                      </h2>
+                      <p style={{ opacity: 0.8 }}>Waiting for other players...</p>
+                      <p style={{ opacity: 0.45, fontSize: "0.9rem" }}>⏱ {(remainingMs / 1000).toFixed(1)}s left</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* TIME OUT / SUBMITTING */}
+                {phase === "submitting" && (
+                  <div style={{ ...overlayBase, background: "linear-gradient(135deg,#1a1a1af0,#2f2a3cf0)", borderRadius: 18 }}>
+                    <div>
+                      <div style={{ fontSize: "3rem" }}>⏰</div>
+                      <h2 style={{ fontFamily: "Itim, cursive", margin: "12px 0 6px" }}>TIME OUT!</h2>
+                      <p style={{ opacity: 0.7 }}>Verifying your nhân phẩm...</p>
+                      <p style={{ opacity: 0.4, fontSize: "0.85rem" }}>Syncing with server...</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* ROUND RESULTS */}
+                {phase === "results" && roundResult && showOverlay && (
+                  <div style={{
+                    ...overlayBase,
+                    borderRadius: 18,
+                    background: roundResult.resulting_is_win
+                      ? "linear-gradient(135deg,#064e3bf0,#065f46f0)"
+                      : "linear-gradient(135deg,#7f1d1df0,#991b1bf0)",
+                  }}>
+                    <div>
+                      {roundResult.resulting_is_win ? (
+                        <>
+                          <div style={{ fontSize: "3rem" }}>✨</div>
+                          <h2 style={{ fontFamily: "Itim, cursive", margin: "10px 0 6px" }}>ROUND WIN!</h2>
+                          <p>RNG ×{Number(roundResult.rng_factor ?? 0).toFixed(2)}</p>
+                          <p style={{ fontSize: "1.5rem", fontWeight: "bold" }}>+{roundResult.delta} coins</p>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: "3rem" }}>{roundResult.anti_cheat ? "🚨" : "💀"}</div>
+                          <h2 style={{ fontFamily: "Itim, cursive", margin: "10px 0 6px" }}>
+                            {roundResult.anti_cheat ? "ANTI-CHEAT TRIGGERED" : "ROUND LOSS"}
+                          </h2>
+                          {roundResult.anti_cheat && (
+                            <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>Bet was invalid. Balance reset to 0.</p>
+                          )}
+                          <p style={{ fontSize: "1.5rem", fontWeight: "bold" }}>{roundResult.delta} coins</p>
+                        </>
+                      )}
+                      <p style={{ marginTop: 10, opacity: 0.85 }}>
+                        Balance: <strong>{roundResult.resulting_balance}</strong> coins
+                      </p>
+
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        style={{
+                          marginTop: 10,
+                          background: "rgba(255, 255, 255, 0.2)",
+                          color: "white",
+                          borderColor: "rgba(255, 255, 255, 0.4)",
+                          width: "100%",
+                          fontFamily: "Patrick Hand, cursive",
+                        }}
+                        onClick={() => setShowOverlay(false)}
+                      >
+                        👁 View Canvas &amp; Answer
+                      </button>
+
+                      {isHost && room?.current_round_index + 1 >= totalQ ? (
+                        <button type="button" className="btn danger" style={{ marginTop: 14 }} onClick={endRoom}>🏁 End Room</button>
+                      ) : isHost && autoSec > 0 ? (
+                        <p style={{ marginTop: 12, opacity: 0.75, fontSize: "0.95rem" }}>⏭ Next question in <strong>{autoSec}s</strong>...</p>
+                      ) : (
+                        <p style={{ marginTop: 12, opacity: 0.5, fontSize: "0.85rem" }}>Waiting for next question...</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* BANKRUPT */}
+                {phase === "bankrupt" && showOverlay && (
+                  <div style={{ ...overlayBase, background: "linear-gradient(135deg,#7f1d1df0,#450a0af0)", borderRadius: 18 }}>
+                    <div>
+                      <div style={{ fontSize: "3.5rem" }}>💸</div>
+                      <h2 style={{ fontFamily: "Itim, cursive", margin: "12px 0 6px" }}>BANKRUPT!</h2>
+                      <p>You ran out of coins and are eliminated.</p>
+                      <p style={{ opacity: 0.55, fontSize: "0.85rem" }}>Spectate the remaining rounds.</p>
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        style={{
+                          marginTop: 14,
+                          background: "rgba(255, 255, 255, 0.2)",
+                          color: "white",
+                          borderColor: "rgba(255, 255, 255, 0.4)",
+                          width: "100%",
+                          fontFamily: "Patrick Hand, cursive",
+                        }}
+                        onClick={() => setShowOverlay(false)}
+                      >
+                        👁 View Canvas &amp; Answer
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* FLOATING SHOW RESULTS BUTTON */}
+                {!showOverlay && (phase === "results" || phase === "bankrupt") && (
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    style={{
+                      position: "absolute",
+                      top: 12,
+                      right: 12,
+                      zIndex: 15,
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+                      fontFamily: "Patrick Hand, cursive",
+                      padding: "6px 12px",
+                    }}
+                    onClick={() => setShowOverlay(true)}
+                  >
+                    📊 Show Stats
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* ── Side panel (Right Column) ─────────────────────────────────────────────────────── */}

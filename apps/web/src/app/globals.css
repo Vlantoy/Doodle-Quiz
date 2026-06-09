@@ -444,56 +444,38 @@ textarea {
   padding: 0;
   box-sizing: border-box;
   overflow: hidden;
-  background-color: var(--bg-color, #fffaf0);
+  background-color: #fffaf0;
 }
 
 .room-grid {
   display: grid;
   gap: 0;
-  grid-template-columns: var(--canvas-max-width, calc(100vh - 110px)) 1fr;
-  align-items: stretch;
+  grid-template-columns: 1fr auto;
   height: 100%;
   width: 100%;
 }
 
 .room-canvas-col {
-  width: var(--canvas-max-width, calc(100vh - 110px));
   height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #ffffff;
+  background: #f8f5ee;
   border-right: 3px solid var(--ink);
   box-sizing: border-box;
-  position: relative;
-}
-
-.room-canvas-wrapper {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-}
-
-.room-grid .doodle-board {
-  border: none !important;
-  border-radius: 12px !important;
-  box-shadow: none !important;
-  height: 100% !important;
-  min-height: unset !important;
+  padding: 16px;
+  overflow: hidden;
 }
 
 /* Sidebar Dashboard */
 .room-sidebar-col {
+  width: 340px;
   height: 100vh;
   overflow-y: auto;
-  padding: 24px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   box-sizing: border-box;
 }
 
@@ -511,24 +493,14 @@ textarea {
   }
 
   .room-canvas-col {
-    width: 100% !important;
     height: auto;
     border-right: none;
     background: transparent;
-  }
-
-  .room-canvas-wrapper {
-    height: auto;
-  }
-
-  .room-grid .doodle-board {
-    border: 3px solid var(--ink) !important;
-    border-radius: 18px !important;
-    box-shadow: none !important;
-    height: auto !important;
+    padding: 0;
   }
 
   .room-sidebar-col {
+    width: 100%;
     height: auto;
     padding: 0;
     overflow-y: visible;
