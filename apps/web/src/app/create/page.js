@@ -145,6 +145,7 @@ function newQuestion() {
   return {
     id: randomUUID(),
     prompt: "",
+    note: "",
     canvasImage: "",
     canvasImageFit: "contain",
     zoomScale: 1.0,
@@ -195,7 +196,7 @@ export default function CreatePage() {
 
   function loadTemplate(tpl) {
     setTitle(tpl.title);
-    setQuestions(tpl.questions.map(item => ({ ...item, id: randomUUID() })));
+    setQuestions(tpl.questions.map(item => ({ note: "", ...item, id: randomUUID() })));
     setSelectedIdx(0);
     setCanvasMode("pan");
     setMsg(`? Template "${tpl.title}" loaded.`);
@@ -299,6 +300,7 @@ export default function CreatePage() {
         return {
           id: item.id,
           prompt: item.prompt?.trim() || `Question ${questions.indexOf(item) + 1}`,
+          note: item.note?.trim() || "",
           canvasImage: item.canvasImage ?? "",
           canvasImageFit: item.canvasImageFit ?? "contain",
           zoomScale: item.zoomScale ?? 1,
@@ -558,6 +560,12 @@ export default function CreatePage() {
               <label style={{ fontSize: "0.82rem", display: "block" }}>
                 <span style={{ opacity: 0.7 }}>Prompt</span>
                 <textarea value={q.prompt || ""} onChange={e => updateQ({ prompt: e.target.value })}
+                  style={{ minHeight: 52, fontSize: "0.85rem", padding: "6px 8px" }} />
+              </label>
+              <label style={{ fontSize: "0.82rem", display: "block", marginTop: 6 }}>
+                <span style={{ opacity: 0.7 }}>Ghi chú / Giải thích đáp án (Trap/Note)</span>
+                <textarea value={q.note || ""} onChange={e => updateQ({ note: e.target.value })}
+                  placeholder="Giải thích trap hoặc đáp án cho câu hỏi này..."
                   style={{ minHeight: 52, fontSize: "0.85rem", padding: "6px 8px" }} />
               </label>
               <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "flex-end" }}>

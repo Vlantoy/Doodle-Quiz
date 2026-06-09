@@ -641,6 +641,30 @@ export default function RoomPage({ params }) {
                 </button>
               )}
             </div>
+
+            {/* Display the note card if present and round is over / reviewing */}
+            {(phase === "results" || phase === "bankrupt" || isGameFinished) && question?.note && (
+              <div className="card" style={{
+                background: "#fef9c3",
+                borderColor: "var(--ink)",
+                borderWidth: 3,
+                borderRadius: 18,
+                boxShadow: "4px 4px 0 #0000001f",
+                fontFamily: "Fredoka, sans-serif",
+                textAlign: "left",
+                padding: "12px 16px",
+              }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: "1.3rem" }}>💡</span>
+                  <strong style={{ color: "var(--ink)", fontSize: "1.05rem", fontFamily: "Itim, cursive" }}>
+                    Giải thích / Ghi chú:
+                  </strong>
+                </div>
+                <p style={{ margin: 0, color: "var(--ink)", fontSize: "0.95rem", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                  {question.note}
+                </p>
+              </div>
+            )}
           </article>
 
           {/* ── Side panel ─────────────────────────────────────────────────────── */}
