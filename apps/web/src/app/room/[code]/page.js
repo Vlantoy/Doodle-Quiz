@@ -375,6 +375,16 @@ export default function RoomPage({ params }) {
   function onCanvasSolve(payload) {
     if (!payload || phaseRef.current !== "active") return;
 
+    // Ignore gauge-only updates — these fire on DoodleCanvas mount/slider change
+    // and must NOT trigger click/submit logic
+    if (payload.isGaugeUpdate) {
+      lastGaugeRef.current = typeof payload.gaugeValue === "number" ? payload.gaugeValue : null;
+      return;
+    }
+
+    // Reject invalid coordinates (null/undefined)
+    if (typeof payload.rx !== "number" || typeof payload.ry !== "number") return;
+
     // Check if it is a multi-click question (more than 1 correct zones)
     const correctZones = question?.elements?.filter(el =>
       (el.type === "PRECISION_TARGET" || el.type === "FREEFORM_ZONE") && el.role !== "DECOY"
