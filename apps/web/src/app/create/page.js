@@ -195,6 +195,51 @@ export default function CreatePage() {
     setSelectedIdx(s => Math.max(0, s >= idx ? s - 1 : s));
   }
 
+  const [draggedIdx, setDraggedIdx] = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
+
+  const handleDragStart = (e, idx) => {
+    setDraggedIdx(idx);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", idx.toString());
+  };
+
+  const handleDragOver = (e, idx) => {
+    e.preventDefault();
+    if (dragOverIdx !== idx) {
+      setDragOverIdx(idx);
+    }
+  };
+
+  const handleDrop = (e, targetIdx) => {
+    e.preventDefault();
+    setDragOverIdx(null);
+    if (draggedIdx === null || draggedIdx === targetIdx) {
+      setDraggedIdx(null);
+      return;
+    }
+
+    const list = [...questions];
+    const draggedItem = list[draggedIdx];
+    list.splice(draggedIdx, 1);
+    list.splice(targetIdx, 0, draggedItem);
+
+    setQuestions(list);
+    if (selectedIdx === draggedIdx) {
+      setSelectedIdx(targetIdx);
+    } else if (selectedIdx > draggedIdx && selectedIdx <= targetIdx) {
+      setSelectedIdx(selectedIdx - 1);
+    } else if (selectedIdx < draggedIdx && selectedIdx >= targetIdx) {
+      setSelectedIdx(selectedIdx + 1);
+    }
+    setDraggedIdx(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIdx(null);
+    setDragOverIdx(null);
+  };
+
   function loadTemplate(tpl) {
     setTitle(tpl.title);
     setQuestions(tpl.questions.map(item => ({ note: "", ...item, id: randomUUID() })));
@@ -434,9 +479,19 @@ export default function CreatePage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {questions.map((item, idx) => (
                 <div key={item.id}
-                  style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 8px", cursor: "pointer",
+                  draggable={true}
+                  onDragStart={e => handleDragStart(e, idx)}
+                  onDragOver={e => handleDragOver(e, idx)}
+                  onDrop={e => handleDrop(e, idx)}
+                  onDragEnd={handleDragEnd}
+                  style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 8px", cursor: "grab",
                     background: idx === selectedIdx ? "#c6f7e2" : "#fff",
-                    border: "2px solid #2f2a3c", borderRadius: 10, fontSize: "0.85rem" }}
+                    border: idx === dragOverIdx && idx !== draggedIdx 
+                      ? "2px dashed #3b82f6" 
+                      : "2px solid #2f2a3c", 
+                    borderRadius: 10, fontSize: "0.85rem",
+                    opacity: idx === draggedIdx ? 0.4 : 1,
+                    transition: "all 0.15s ease" }}
                   onClick={() => setSelectedIdx(idx)}
                 >
                   <strong>Q{idx + 1}</strong>
@@ -568,6 +623,12 @@ export default function CreatePage() {
                 <textarea value={q.note || ""} onChange={e => updateQ({ note: e.target.value })}
                   placeholder="Giải thích trap hoặc đáp án cho câu hỏi này..."
                   style={{ minHeight: 52, fontSize: "0.85rem", padding: "6px 8px" }} />
+              </label>
+              <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "0.82rem", marginTop: 6, cursor: "pointer" }}>
+                <input type="checkbox" checked={q.requireSequence ?? false}
+                  onChange={e => updateQ({ requireSequence: e.target.checked })}
+                  style={{ cursor: "pointer" }} />
+                <span style={{ fontWeight: "bold", color: "#7c3aed" }}>🧩 Yêu cầu click theo thứ tự các Zone (Require click sequence)</span>
               </label>
               <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "flex-end" }}>
                 <label style={{ fontSize: "0.82rem", flex: 1 }}>
@@ -714,9 +775,11 @@ export default function CreatePage() {
                         </div>
                       )}
 
-                      {el.type === "FREEFORM_ZONE" && (
+                      {(el.type === "FREEFORM_ZONE" || el.type === "PRECISION_TARGET") && (
                         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          <small style={{ opacity: 0.55, fontSize: "0.75rem" }}>{el.points_ratio?.length ?? 0} pts</small>
+                          {el.type === "FREEFORM_ZONE" && (
+                            <small style={{ opacity: 0.55, fontSize: "0.75rem" }}>{el.points_ratio?.length ?? 0} pts</small>
+                          )}
                           <button type="button"
                             onClick={() => patchElement(el.id, { role: el.role === "DECOY" ? "CORRECT_ANSWER" : "DECOY" })}
                             style={{ padding: "2px 10px", borderRadius: 8, cursor: "pointer", border: "2px solid",

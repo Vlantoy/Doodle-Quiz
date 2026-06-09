@@ -50,6 +50,18 @@ const ConfettiExplosion = () => {
   );
 };
 
+function pointInPolygon(rx, ry, points) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const xi = points[i].x, yi = points[i].y;
+    const xj = points[j].x, yj = points[j].y;
+    if (((yi > ry) !== (yj > ry)) && (rx < ((xj - xi) * (ry - yi)) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 export default function RoomPage({ params }) {
   const roomCode = String(params.code || "").toUpperCase();
   const router = useRouter();
@@ -87,6 +99,7 @@ export default function RoomPage({ params }) {
   const lastClickRef   = useRef(null);   // {rx, ry} of player's last canvas click this round
   const lastGaugeRef   = useRef(null);   // gauge value at click time (or null)
   const [autoSec, setAutoSec] = useState(0);
+  const [playerClicks, setPlayerClicks] = useState([]);
 
   function syncPhase(p) { setPhase(p); phaseRef.current = p; }
   function syncBet(v)   { setBet(v);   betRef.current   = v; }
@@ -309,6 +322,7 @@ export default function RoomPage({ params }) {
     startMsRef.current   = Date.now();
     setRoundResult(null);
     setReviewQuestionIndex(null);
+    setPlayerClicks([]);
     syncPhase("active");
     setShowOverlay(true);
     setMsg("Round started! Find the hidden target zone.");
@@ -333,11 +347,102 @@ export default function RoomPage({ params }) {
 
   function onCanvasSolve(payload) {
     if (!payload || phaseRef.current !== "active") return;
-    lastClickRef.current = { rx: payload.rx, ry: payload.ry };
-    lastGaugeRef.current = typeof payload.gaugeValue === "number" ? payload.gaugeValue : null;
-    localWinRef.current = payload.isLocalHit;
-    syncPhase("won_waiting");
+
+    // Check if it is a multi-click question (more than 1 correct zones)
+    const correctZones = question?.elements?.filter(el =>
+      (el.type === "PRECISION_TARGET" || el.type === "FREEFORM_ZONE") && el.role !== "DECOY"
+    ) ?? [];
+    const isMultiple = correctZones.length > 1;
+
+    if (isMultiple) {
+      setPlayerClicks(prev => {
+        if (prev.length >= correctZones.length) return prev;
+        const newClicks = [...prev, { rx: payload.rx, ry: payload.ry }];
+        return newClicks;
+      });
+      lastGaugeRef.current = typeof payload.gaugeValue === "number" ? payload.gaugeValue : null;
+    } else {
+      lastClickRef.current = { rx: payload.rx, ry: payload.ry };
+      lastGaugeRef.current = typeof payload.gaugeValue === "number" ? payload.gaugeValue : null;
+      localWinRef.current = payload.isLocalHit;
+      syncPhase("won_waiting");
+    }
   }
+
+  const handleMultiSubmit = () => {
+    const correctZones = question?.elements?.filter(el =>
+      (el.type === "PRECISION_TARGET" || el.type === "FREEFORM_ZONE") && el.role !== "DECOY"
+    ) ?? [];
+
+    if (playerClicks.length !== correctZones.length) return;
+
+    let won = false;
+    if (question?.requireSequence) {
+      // Click in sequence order (Click i matches Zone i)
+      let seqOk = true;
+      for (let i = 0; i < correctZones.length; i++) {
+        const click = playerClicks[i];
+        const zone = correctZones[i];
+        let hit = false;
+        if (zone.type === "PRECISION_TARGET") {
+          if (
+            click.rx >= zone.x_ratio && click.rx <= zone.x_ratio + zone.w_ratio &&
+            click.ry >= zone.y_ratio && click.ry <= zone.y_ratio + zone.h_ratio
+          ) { hit = true; }
+        } else if (zone.type === "FREEFORM_ZONE") {
+          if (zone.points_ratio?.length >= 3 && pointInPolygon(click.rx, click.ry, zone.points_ratio)) {
+            hit = true;
+          }
+        }
+        if (!hit) {
+          seqOk = false;
+          break;
+        }
+      }
+      won = seqOk;
+    } else {
+      // Click in any order (each correct zone matched exactly once)
+      const visited = new Array(correctZones.length).fill(false);
+      function match(clickIdx) {
+        if (clickIdx === playerClicks.length) return true;
+        const click = playerClicks[clickIdx];
+        for (let zIdx = 0; zIdx < correctZones.length; zIdx++) {
+          if (visited[zIdx]) continue;
+          const zone = correctZones[zIdx];
+          let hit = false;
+          if (zone.type === "PRECISION_TARGET") {
+            if (
+              click.rx >= zone.x_ratio && click.rx <= zone.x_ratio + zone.w_ratio &&
+              click.ry >= zone.y_ratio && click.ry <= zone.y_ratio + zone.h_ratio
+            ) { hit = true; }
+          } else if (zone.type === "FREEFORM_ZONE") {
+            if (zone.points_ratio?.length >= 3 && pointInPolygon(click.rx, click.ry, zone.points_ratio)) {
+              hit = true;
+            }
+          }
+          if (hit) {
+            visited[zIdx] = true;
+            if (match(clickIdx + 1)) return true;
+            visited[zIdx] = false;
+          }
+        }
+        return false;
+      }
+      won = match(0);
+    }
+
+    const gaugeEl = question?.elements?.find(el => el.type === "GAUGE_BLOCK");
+    const gaugeValue = typeof lastGaugeRef.current === "number" ? lastGaugeRef.current : 50;
+    const gaugeOk = !gaugeEl ||
+      typeof gaugeEl.correctMin !== "number" ||
+      (gaugeValue >= gaugeEl.correctMin && gaugeValue <= gaugeEl.correctMax);
+
+    const finalWin = won && gaugeOk;
+
+    lastClickRef.current = playerClicks[0] || { rx: 0.5, ry: 0.5 };
+    localWinRef.current = finalWin;
+    syncPhase("won_waiting");
+  };
 
   // ── Batch submit — reads refs, NOT stale state closure ───────────────────────
   async function fireSubmit() {
@@ -502,6 +607,7 @@ export default function RoomPage({ params }) {
                   onSolve={onCanvasSolve}
                   isCreator={false}
                   revealAnswers={phase === "results" || phase === "bankrupt" || isGameFinished}
+                  playerClicks={playerClicks}
                 />
               ) : (
                 <div className="doodle-board" style={{ minHeight: 200, display: "grid", placeItems: "center", opacity: 0.4 }}>
@@ -701,25 +807,55 @@ export default function RoomPage({ params }) {
             )}
 
             {/* Player Active Betting Panel */}
-            {!isHost && phase === "active" && !isBankrupt && (
-              <div className="card" style={{ background: "#fff8e8", border: "2px dashed #2f2a3c" }}>
-                <h3 style={{ margin: "0 0 8px" }}>💰 Place Your Bet</h3>
-                <p style={{ margin: "0 0 8px", fontSize: "0.9rem" }}>
-                  Balance: <strong>{myBalance}</strong> · Bet: 1–{myBalance}
-                </p>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={myBalance}
-                  value={bet}
-                  onChange={e => syncBet(Math.max(1, Math.min(myBalance, Number(e.target.value) || 1)))}
-                />
-                <p style={{ margin: "8px 0 0", opacity: 0.6, fontSize: "0.82rem" }}>
-                  Adjust your bet, then click on the canvas to submit!
-                </p>
-              </div>
-            )}
+            {!isHost && phase === "active" && !isBankrupt && (() => {
+              const correctZones = question?.elements?.filter(el =>
+                (el.type === "PRECISION_TARGET" || el.type === "FREEFORM_ZONE") && el.role !== "DECOY"
+              ) ?? [];
+              const isMultiple = correctZones.length > 1;
+
+              return (
+                <div className="card" style={{ background: "#fff8e8", border: "2px dashed #2f2a3c" }}>
+                  <h3 style={{ margin: "0 0 8px" }}>💰 Place Your Bet</h3>
+                  <p style={{ margin: "0 0 8px", fontSize: "0.9rem" }}>
+                    Balance: <strong>{myBalance}</strong> · Bet: 1–{myBalance}
+                  </p>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={myBalance}
+                    value={bet}
+                    onChange={e => syncBet(Math.max(1, Math.min(myBalance, Number(e.target.value) || 1)))}
+                  />
+                  {isMultiple ? (
+                    <div style={{ marginTop: 8 }}>
+                      <p style={{ margin: "0 0 8px", fontWeight: "bold", color: "#7c3aed", fontSize: "0.85rem", lineHeight: 1.4 }}>
+                        🧩 YÊU CẦU CLICK ĐÚNG THỨ TỰ:
+                        <br />
+                        Hãy click vào các target zone theo thứ tự từ 1 đến {correctZones.length}!
+                      </p>
+                      <div style={{ fontSize: "0.82rem", marginBottom: 8, opacity: 0.8 }}>
+                        Đã click: <strong>{playerClicks.length} / {correctZones.length}</strong>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button type="button" className="btn secondary" style={{ flex: 1, padding: "5px 10px" }}
+                          onClick={() => setPlayerClicks([])} disabled={playerClicks.length === 0}>
+                          Xóa (Clear)
+                        </button>
+                        <button type="button" className="btn" style={{ flex: 1, padding: "5px 10px" }}
+                          onClick={handleMultiSubmit} disabled={playerClicks.length !== correctZones.length}>
+                          Gửi đáp án 🚀
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p style={{ margin: "8px 0 0", opacity: 0.6, fontSize: "0.82rem" }}>
+                      Adjust your bet, then click on the canvas to submit!
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Host Active Status */}
             {isHost && phase === "active" && (

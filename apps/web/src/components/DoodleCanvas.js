@@ -122,6 +122,7 @@ export default function DoodleCanvas({
   brushMode = "normal",
   onZoomPanChange,
   revealAnswers = false,
+  playerClicks = [],
 }) {
   const containerRef = useRef(null);
   const svgRef       = useRef(null);
@@ -388,21 +389,23 @@ export default function DoodleCanvas({
 
     if (isCreator || revealAnswers) {
       liveElements.filter(el => el.type === "PRECISION_TARGET").forEach((el, i) => {
+        if (!isCreator && el.role === "DECOY") return;
         const x = C_W * el.x_ratio;
         const y = C_H * el.y_ratio;
         const w = Math.max(C_W * el.w_ratio, 4);
         const h = Math.max(C_H * el.h_ratio, 4);
+        const isCorrect = el.role !== "DECOY";
         svg.appendChild(rc.rectangle(x, y, w, h, {
-          roughness: 1.8, stroke: "#22c55e", strokeWidth: 2,
-          fill: "#22c55e33", fillStyle: "cross-hatch",
+          roughness: 1.8, stroke: isCorrect ? "#22c55e" : "#ef4444", strokeWidth: 2,
+          fill: isCorrect ? "#22c55e33" : "#ef444433", fillStyle: "cross-hatch",
         }));
         const lbl = document.createElementNS("http://www.w3.org/2000/svg", "text");
         lbl.setAttribute("x", String(x + 4));
         lbl.setAttribute("y", String(Math.max(y - 5, 14)));
-        lbl.setAttribute("fill", "#22c55e");
+        lbl.setAttribute("fill", isCorrect ? "#22c55e" : "#ef4444");
         lbl.setAttribute("font-size", "12");
         lbl.setAttribute("font-family", "Patrick Hand, sans-serif");
-        lbl.textContent = `✅ Zone ${i + 1}`;
+        lbl.textContent = isCorrect ? `✅ Zone ${i + 1}` : `🪤 Decoy ${i + 1}`;
         svg.appendChild(lbl);
       });
 
@@ -496,7 +499,39 @@ export default function DoodleCanvas({
         }
       }
     }
-  }, [question?.id, isCreator, revealAnswers, targetJson, drawingRect, drawingPolyline, brushPreview, selectedElemId]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Render player clicks markers if present (for multi-click questions)
+    if (playerClicks && playerClicks.length > 0) {
+      playerClicks.forEach((click, idx) => {
+        const cx = C_W * click.rx;
+        const cy = C_H * click.ry;
+
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", String(cx));
+        circle.setAttribute("cy", String(cy));
+        circle.setAttribute("r", "10");
+        circle.setAttribute("fill", "#ef4444");
+        circle.setAttribute("stroke", "#ffffff");
+        circle.setAttribute("stroke-width", "2");
+
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", String(cx));
+        text.setAttribute("y", String(cy));
+        text.setAttribute("dy", "3.5");
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("fill", "#ffffff");
+        text.setAttribute("font-size", "11");
+        text.setAttribute("font-weight", "bold");
+        text.setAttribute("font-family", "Patrick Hand, sans-serif");
+        text.textContent = String(idx + 1);
+
+        g.appendChild(circle);
+        g.appendChild(text);
+        svg.appendChild(g);
+      });
+    }
+  }, [question?.id, isCreator, revealAnswers, targetJson, drawingRect, drawingPolyline, brushPreview, selectedElemId, playerClicks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Scroll-wheel zoom ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -767,12 +802,12 @@ export default function DoodleCanvas({
       let hit = false;
       for (let i = liveElements.length - 1; i >= 0; i--) {
         const el = liveElements[i];
-        if (el.type === "PRECISION_TARGET") {
+        if (el.type === "PRECISION_TARGET" && el.role !== "DECOY") {
           if (
             rx >= el.x_ratio && rx <= el.x_ratio + el.w_ratio &&
             ry >= el.y_ratio && ry <= el.y_ratio + el.h_ratio
           ) { hit = true; break; }
-        } else if (el.type === "FREEFORM_ZONE" && el.role === "CORRECT_ANSWER") {
+        } else if (el.type === "FREEFORM_ZONE" && el.role !== "DECOY") {
           // Ray-casting point-in-polygon: accurate for any convex or concave freeform shape
           if (el.points_ratio?.length >= 3 && pointInPolygon(rx, ry, el.points_ratio)) {
             hit = true; break;
@@ -845,6 +880,26 @@ export default function DoodleCanvas({
     elemDragRef.current = null;
   }
 
+  // ── Clipboard copy handler ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isCreator) return;
+    const container = containerRef.current;
+    if (!container) return;
+    function handleCopy(e) {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      const id = selectedElemIdRef.current;
+      if (id) {
+        const el = liveElements.find(x => x.id === id);
+        if (el) {
+          e.clipboardData?.setData("text/plain", `[doodle-element:${JSON.stringify(el)}]`);
+          e.preventDefault();
+        }
+      }
+    }
+    container.addEventListener("copy", handleCopy);
+    return () => container.removeEventListener("copy", handleCopy);
+  }, [isCreator, liveElements]);
+
   // ── Clipboard paste: image → IMAGE_BLOCK, text → TEXT_BLOCK ───────────────────
   // Container needs tabIndex so clicking it gives focus, enabling Ctrl+V
   useEffect(() => {
@@ -852,6 +907,7 @@ export default function DoodleCanvas({
     const container = containerRef.current;
     if (!container) return;
     function handlePaste(e) {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
       const items = [...(e.clipboardData?.items ?? [])];
       // Image takes priority over plain text
       const imgItem = items.find(it => it.type.startsWith("image/"));
@@ -883,6 +939,39 @@ export default function DoodleCanvas({
           e.preventDefault();
           const { rx, ry } = lastClickRef.current;
           const s = scaleRef.current;
+
+          // Check if it's a custom serialized doodle element
+          if (text.startsWith("[doodle-element:")) {
+            try {
+              const jsonStr = text.slice("[doodle-element:".length, -1);
+              const el = JSON.parse(jsonStr);
+              const newEl = {
+                ...el,
+                id: randomUUID(),
+                x_ratio: rx - (el.w_ratio / 2),
+                y_ratio: ry - (el.h_ratio / 2),
+              };
+              
+              const isSamePos = Math.abs(newEl.x_ratio - el.x_ratio) < 0.01 && Math.abs(newEl.y_ratio - el.y_ratio) < 0.01;
+              if (isSamePos) {
+                newEl.x_ratio += 0.04;
+                newEl.y_ratio += 0.04;
+              }
+
+              if (el.points_ratio) {
+                const oldBBox = computeBBox(el.points_ratio);
+                const nextBBox = { bx: newEl.x_ratio, by: newEl.y_ratio, bw: el.w_ratio, bh: el.h_ratio };
+                newEl.points_ratio = resizePoints(el.points_ratio, oldBBox, nextBBox);
+              }
+              setLiveElements(prev => { const n = [...prev, newEl]; onElemChangeRef.current?.(n); return n; });
+              setSelectedElemId(newEl.id);
+              return;
+            } catch (err) {
+              console.error("Paste custom element error:", err);
+            }
+          }
+
+          // Fallback: paste standard text block
           const newEl = {
             id: randomUUID(),
             type: "TEXT_BLOCK",
@@ -951,6 +1040,33 @@ export default function DoodleCanvas({
           }
           return;
         }
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+        if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+        const id = selectedElemIdRef.current;
+        if (id) {
+          e.preventDefault();
+          const el = liveElements.find(x => x.id === id);
+          if (el) {
+            const newEl = {
+              ...el,
+              id: randomUUID(),
+              x_ratio: el.x_ratio + 0.04,
+              y_ratio: el.y_ratio + 0.04,
+            };
+            if (el.points_ratio) {
+              newEl.points_ratio = el.points_ratio.map(p => ({ x: p.x + 0.04, y: p.y + 0.04 }));
+            }
+            setLiveElements(prev => {
+              const n = [...prev, newEl];
+              onElemChangeRef.current?.(n);
+              return n;
+            });
+            setSelectedElemId(newEl.id);
+          }
+        }
+        return;
       }
 
       if (e.key !== "Delete" && e.key !== "Backspace") return;
