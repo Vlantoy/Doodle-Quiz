@@ -698,15 +698,16 @@ export default function DoodleCanvas({
       // §3 inverse matrix: undo pan + scale before ratio conversion
       const { rx, ry } = getHitCoords(e.clientX, e.clientY);
       const isAnswer   = creatorMode === "place-answer";
+      const s = scaleRef.current;
       // §2 ratio conversion + §1 append-to-end
       commitElements([...liveElements, {
         id: randomUUID(),
         type: isAnswer ? "ANSWER_BLOCK" : "TEXT_BLOCK",
         content: isAnswer ? "Move me! 🙈" : "Text Block",
-        x_ratio: rx - 0.11,
-        y_ratio: ry - 0.05,
-        w_ratio: 0.22,
-        h_ratio: 0.10,
+        x_ratio: rx - (0.11 / s),
+        y_ratio: ry - (0.05 / s),
+        w_ratio: 0.22 / s,
+        h_ratio: 0.10 / s,
         fontSizeScale: 1.0,
         isMovableByPlayer: isAnswer,
       }]);
@@ -825,14 +826,15 @@ export default function DoodleCanvas({
         const reader = new FileReader();
         reader.onload = ev => {
           const { rx, ry } = lastClickRef.current;
+          const s = scaleRef.current;
           const newEl = {
             id: randomUUID(),
             type: "IMAGE_BLOCK",
             src: ev.target.result,
-            x_ratio: rx - 0.15,
-            y_ratio: ry - 0.10,
-            w_ratio: 0.30,
-            h_ratio: 0.20,
+            x_ratio: rx - (0.15 / s),
+            y_ratio: ry - (0.10 / s),
+            w_ratio: 0.30 / s,
+            h_ratio: 0.20 / s,
           };
           setLiveElements(prev => { const n = [...prev, newEl]; onElemChangeRef.current?.(n); return n; });
         };
@@ -845,14 +847,15 @@ export default function DoodleCanvas({
           if (!text.trim()) return;
           e.preventDefault();
           const { rx, ry } = lastClickRef.current;
+          const s = scaleRef.current;
           const newEl = {
             id: randomUUID(),
             type: "TEXT_BLOCK",
             content: text.trim().slice(0, 200),
-            x_ratio: rx - 0.11,
-            y_ratio: ry - 0.05,
-            w_ratio: 0.22,
-            h_ratio: 0.10,
+            x_ratio: rx - (0.11 / s),
+            y_ratio: ry - (0.05 / s),
+            w_ratio: 0.22 / s,
+            h_ratio: 0.10 / s,
             fontSizeScale: 1.0,
             isMovableByPlayer: false,
           };
@@ -1043,7 +1046,8 @@ export default function DoodleCanvas({
                 : "#ffd7ba",
               padding: el.type === "IMAGE_BLOCK" ? 0 : "5px 8px",
               fontFamily: "Patrick Hand, cursive",
-              fontSize: `${(el.fontSizeScale ?? 1.0) * 3}cqw`,
+              fontSize: `${(el.fontSizeScale ?? 1.0) * 14}cqw`,
+              containerType: "inline-size",
               cursor: (el.isMovableByPlayer || isCreator) ? "grab" : "default",
               // Use its index in liveElements to stack elements correctly
               zIndex: elementIdx + 2,
@@ -1123,7 +1127,7 @@ export default function DoodleCanvas({
                 style={{                  width: "100%", height: "100%", minHeight: 32,
                   border: "none", outline: "none", resize: "none",
                   background: "transparent", fontFamily: "Patrick Hand, cursive",
-                  fontSize: `${(el.fontSizeScale ?? 1.0) * 3}cqw`, textAlign: "center", padding: "2px 4px",
+                  fontSize: `${(el.fontSizeScale ?? 1.0) * 14}cqw`, textAlign: "center", padding: "2px 4px",
                   cursor: "text", boxSizing: "border-box",
                 }}
                 onPointerDown={e => e.stopPropagation()}
