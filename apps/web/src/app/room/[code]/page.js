@@ -550,95 +550,57 @@ export default function RoomPage({ params }) {
     } catch (err) { setMsg(`Start failed: ${err.message}`); }
   }
 
+  const isCreator = false;
+  const canvasDisabled = phase !== "active" || isBankrupt || isHost;
+  const overlayBase = {
+    position: "absolute",
+    inset: 0,
+    zIndex: 100,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    padding: 24,
+    boxSizing: "border-box",
+    color: "#fff",
+    fontFamily: "Fredoka, sans-serif"
+  };
+
   async function endRoom() {
-    if (!isHost) return;
+    if (!roomCode || !user) return;
     try {
       await cleanupRoom({ roomCode, hostPlayerId: user.playerId }, hostSecret);
-      router.push("/?ended=1");
-    } catch (err) { setMsg(`End room failed: ${err.message}`); }
+    } catch (err) {
+      console.error("Failed to end room:", err);
+    }
+    router.push("/");
   }
 
   async function handleLeave() {
+    if (!roomCode || !user) return;
     try {
       if (isHost) {
         await cleanupRoom({ roomCode, hostPlayerId: user.playerId }, hostSecret);
       } else {
         await deletePlayer(user.playerId, roomCode);
       }
-    } catch (e) {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to leave room:", err);
     }
     router.push("/");
   }
 
-  // Host watches as presenter — never clicks canvas
-  const canvasDisabled = phase !== "active" || isBankrupt || isHost;
-
-  // ── Shared overlay style ──────────────────────────────────────────────────────
-  const overlayBase = {
-    position: "absolute", inset: 0, zIndex: 10,
-    display: "grid", placeItems: "center", textAlign: "center",
-    color: "white", borderRadius: 18, padding: 24,
-  };
+  const hasGauge = question?.elements?.some(el => el.type === "GAUGE_BLOCK");
+  const canvasMaxWidth = hasGauge ? "calc(100vh - 110px)" : "calc(100vh - 55px)";
 
   return (
     <>
-      <main className="app-shell grid" style={{ gap: 14 }}>
-        <section className="card row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-          <div>
-            <h1 className="title" style={{ fontSize: "2rem" }}>
-              Room <span style={{ color: "#ff8f9f" }}>{roomCode}</span>
-            </h1>
-            <div className="row" style={{ marginTop: 6, flexWrap: "wrap" }}>
-              <span className="badge">⏱ {(remainingMs / 1000).toFixed(1)}s</span>
-              <span className="badge">Q {(room?.current_round_index ?? 0) + 1}/{totalQ || "?"}</span>
-              {!isHost && <span className="badge">💰 {myBalance} coins</span>}
-              {isHost && <span className="badge" style={{ background: "#c6f7e2" }}>HOST 👑</span>}
-              {!isHost && isBankrupt && <span className="badge" style={{ background: "#ff6b6b", color: "white" }}>BANKRUPT</span>}
-            </div>
-          </div>
-          <button type="button" onClick={handleLeave} className="btn secondary">Leave</button>
-        </section>
-
+      <main className="room-shell" style={{ "--canvas-max-width": canvasMaxWidth }}>
         <section className="room-grid">
-          {/* ── Canvas area ────────────────────────────────────────────────────── */}
-          <article className="card grid">
-            <h2 style={{ margin: "0 0 6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span>
-                {isHost ? (
-                  phase === "lobby" ? `📢 Quiz Set: ${room?.quiz_payload?.title || "Untitled"}` : (question?.prompt || "Active Round")
-                ) : (
-                  phase === "lobby" ? "⏳ Waiting for host to start a round..." : (question?.prompt || "⏳ Waiting for host to start a round...")
-                )}
-              </span>
-              {isGameFinished && !showFinalLeaderboard && (
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    style={{ padding: "4px 10px", fontSize: "0.9rem" }}
-                    disabled={activeQuestionIndex === 0}
-                    onClick={() => setReviewQuestionIndex(activeQuestionIndex - 1)}
-                  >
-                    ◀ Trước
-                  </button>
-                  <span style={{ fontSize: "1rem", fontFamily: "Fredoka, sans-serif", fontWeight: "bold" }}>
-                    Câu {activeQuestionIndex + 1}/{totalQ}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    style={{ padding: "4px 10px", fontSize: "0.9rem" }}
-                    disabled={activeQuestionIndex === totalQ - 1}
-                    onClick={() => setReviewQuestionIndex(activeQuestionIndex + 1)}
-                  >
-                    Sau ▶
-                  </button>
-                </div>
-              )}
-            </h2>
-
-            <div style={{ position: "relative" }}>
+          {/* ── Canvas area (Left Column: Full Height 1:1, pushed to left) ────────────────────── */}
+          <div className="room-canvas-col">
+            <div className="room-canvas-wrapper">
               {question ? (
                 <DoodleCanvas
                   question={question}
@@ -649,7 +611,7 @@ export default function RoomPage({ params }) {
                   playerClicks={playerClicks}
                 />
               ) : (
-                <div className="doodle-board" style={{ minHeight: 200, display: "grid", placeItems: "center", opacity: 0.4 }}>
+                <div className="doodle-board" style={{ height: "100%", display: "grid", placeItems: "center", opacity: 0.4 }}>
                   <p>No question active</p>
                 </div>
               )}
@@ -691,7 +653,7 @@ export default function RoomPage({ params }) {
                   <div>
                     {roundResult.resulting_is_win ? (
                       <>
-                       <div style={{ fontSize: "3rem" }}>✨</div>
+                        <div style={{ fontSize: "3rem" }}>✨</div>
                         <h2 style={{ fontFamily: "Itim, cursive", margin: "10px 0 6px" }}>ROUND WIN!</h2>
                         <p>RNG ×{Number(roundResult.rng_factor ?? 0).toFixed(2)}</p>
                         <p style={{ fontSize: "1.5rem", fontWeight: "bold" }}>+{roundResult.delta} coins</p>
@@ -786,34 +748,66 @@ export default function RoomPage({ params }) {
                 </button>
               )}
             </div>
+          </div>
 
-            {/* Display the note card if present and round is over / reviewing */}
-            {(phase === "results" || phase === "bankrupt" || isGameFinished) && question?.note && (
-              <div className="card" style={{
-                background: "#fef9c3",
-                borderColor: "var(--ink)",
-                borderWidth: 3,
-                borderRadius: 18,
-                boxShadow: "4px 4px 0 #0000001f",
-                fontFamily: "Fredoka, sans-serif",
-                textAlign: "left",
-                padding: "12px 16px",
-              }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: "1.3rem" }}>💡</span>
-                  <strong style={{ color: "var(--ink)", fontSize: "1.05rem", fontFamily: "Itim, cursive" }}>
-                    Giải thích / Ghi chú:
-                  </strong>
-                </div>
-                <p style={{ margin: 0, color: "var(--ink)", fontSize: "0.95rem", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-                  {question.note}
-                </p>
+          {/* ── Side panel (Right Column) ─────────────────────────────────────────────────────── */}
+          <div className="room-sidebar-col">
+            {/* Card 1: Metadata & Prompt */}
+            <article className="card grid" style={{ gap: 10, padding: "12px 14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <h2 className="title" style={{ fontSize: "1.4rem", margin: 0 }}>
+                  Room <span style={{ color: "#ff8f9f" }}>{roomCode}</span>
+                </h2>
+                <button type="button" onClick={handleLeave} className="btn secondary" style={{ padding: "4px 10px", fontSize: "0.85rem" }}>Leave</button>
               </div>
-            )}
-          </article>
 
-          {/* ── Side panel ─────────────────────────────────────────────────────── */}
-          <article className="card grid" style={{ gap: 12, padding: "12px 14px" }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <span className="badge">⏱ {(remainingMs / 1000).toFixed(1)}s</span>
+                <span className="badge">Q {(room?.current_round_index ?? 0) + 1}/{totalQ || "?"}</span>
+                {!isHost && <span className="badge">💰 {myBalance} coins</span>}
+                {isHost && <span className="badge" style={{ background: "#c6f7e2" }}>HOST 👑</span>}
+                {!isHost && isBankrupt && <span className="badge" style={{ background: "#ff6b6b", color: "white" }}>BANKRUPT</span>}
+              </div>
+
+              <div style={{ borderTop: "2px dashed #ccc", paddingTop: 8, marginTop: 4 }}>
+                <h3 style={{ fontSize: "0.95rem", margin: "0 0 6px", color: "var(--ink)", fontFamily: "Fredoka, sans-serif" }}>
+                  🎯 Câu hỏi:
+                </h3>
+                <p style={{ margin: 0, fontSize: "0.95rem", fontWeight: "bold", lineHeight: 1.4 }}>
+                  {isHost ? (
+                    phase === "lobby" ? `📢 Quiz Set: ${room?.quiz_payload?.title || "Untitled"}` : (question?.prompt || "Active Round")
+                  ) : (
+                    phase === "lobby" ? "⏳ Waiting for host to start a round..." : (question?.prompt || "⏳ Waiting for host to start a round...")
+                  )}
+                </p>
+
+                {isGameFinished && !showFinalLeaderboard && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      style={{ padding: "3px 8px", fontSize: "0.80rem" }}
+                      disabled={activeQuestionIndex === 0}
+                      onClick={() => setReviewQuestionIndex(activeQuestionIndex - 1)}
+                    >
+                      ◀ Trước
+                    </button>
+                    <span style={{ fontSize: "0.85rem", fontFamily: "Fredoka, sans-serif", fontWeight: "bold" }}>
+                      Câu {activeQuestionIndex + 1}/{totalQ}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      style={{ padding: "3px 8px", fontSize: "0.80rem" }}
+                      disabled={activeQuestionIndex === totalQ - 1}
+                      onClick={() => setReviewQuestionIndex(activeQuestionIndex + 1)}
+                    >
+                      Sau ▶
+                    </button>
+                  </div>
+                )}
+              </div>
+            </article>
 
             {/* Host Controls for Lobby & Results */}
             {isHost && (phase === "lobby" || phase === "results") && (
@@ -898,9 +892,9 @@ export default function RoomPage({ params }) {
 
             {/* Host Active Status */}
             {isHost && phase === "active" && (
-              <div className="card" style={{ background: "#c6f7e2", borderStyle: "dashed" }}>
-                <h3 style={{ margin: 0 }}>🎯 Round Active</h3>
-                <p style={{ margin: "6px 0 0", fontSize: "0.9rem" }}>Players are currently making their bets and guesses.</p>
+              <div className="card" style={{ background: "#c6f7e2", borderStyle: "dashed", padding: "10px 12px" }}>
+                <h4 style={{ margin: "0 0 4px", fontSize: "1.05rem" }}>🎯 Round Active</h4>
+                <p style={{ margin: 0, fontSize: "0.85rem", opacity: 0.8 }}>Players are currently making their bets and guesses.</p>
               </div>
             )}
 
@@ -909,11 +903,35 @@ export default function RoomPage({ params }) {
               <button type="button" className="btn danger" onClick={endRoom}>🏁 End Room &amp; Archive</button>
             )}
 
-            {/* Players */}
-            <div>
+            {/* Display the note card if present and round is over / reviewing */}
+            {(phase === "results" || phase === "bankrupt" || isGameFinished) && question?.note && (
+              <div className="card" style={{
+                background: "#fef9c3",
+                borderColor: "var(--ink)",
+                borderWidth: 3,
+                borderRadius: 18,
+                boxShadow: "4px 4px 0 #0000001f",
+                fontFamily: "Fredoka, sans-serif",
+                textAlign: "left",
+                padding: "10px 14px",
+              }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: "1.2rem" }}>💡</span>
+                  <strong style={{ color: "var(--ink)", fontSize: "0.95rem", fontFamily: "Itim, cursive" }}>
+                    Giải thích / Ghi chú:
+                  </strong>
+                </div>
+                <p style={{ margin: 0, color: "var(--ink)", fontSize: "0.85rem", lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
+                  {question.note}
+                </p>
+              </div>
+            )}
+
+            {/* Players Scoreboard */}
+            <div className="card" style={{ padding: "10px 12px" }}>
               {isGameFinished ? (
-                <div className="card" style={{ background: "linear-gradient(135deg, #fffbeb, #faf5ff)", borderColor: "#7c3aed", borderWidth: 3 }}>
-                  <h3 style={{ margin: "0 0 12px", textAlign: "center", fontSize: "1.4rem", color: "#7c3aed", fontFamily: "Itim, cursive" }}>🏆 Final Standings</h3>
+                <div>
+                  <h4 style={{ margin: "0 0 10px", textAlign: "center", fontSize: "1.2rem", color: "#7c3aed", fontFamily: "Itim, cursive" }}>🏆 Final Standings</h4>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {[...players]
                       .sort((a, b) => b.balance - a.balance)
@@ -922,19 +940,18 @@ export default function RoomPage({ params }) {
                         const isMe = p.player_id === user?.playerId;
                         return (
                           <div key={p.player_id} style={{
-                            display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                            display: "flex", alignItems: "center", gap: 10, padding: "6px 10px",
                             background: isMe ? "#f5f3ff" : "#fff",
                             border: isMe ? "2.5px solid #7c3aed" : "2px solid #2f2a3c",
-                            borderRadius: 14,
+                            borderRadius: 12,
+                            fontSize: "0.85rem",
                           }}>
-                            <span style={{ fontSize: "1.2rem", fontWeight: "bold", width: 28, textAlign: "center" }}>{medal}</span>
+                            <span style={{ fontSize: "1.1rem", fontWeight: "bold", width: 24, textAlign: "center" }}>{medal}</span>
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: "0.72rem", opacity: 0.5 }}>{p.avatar_seed}</div>
                               <strong>{p.username}</strong>
                               {isMe && <span style={{ fontSize: "0.75rem", color: "#7c3aed" }}> (you)</span>}
-                              {p.player_id === room?.host_player_id && <span> 👑</span>}
                             </div>
-                            <div style={{ fontWeight: "bold", fontSize: "1.1rem" }}>💰 {p.balance}</div>
+                            <div style={{ fontWeight: "bold" }}>💰 {p.balance}</div>
                           </div>
                         );
                       })}
@@ -944,7 +961,6 @@ export default function RoomPage({ params }) {
                 <>
                   <h4 style={{ margin: "0 0 6px", fontSize: "0.95rem" }}>Host &amp; Players ({players.length + 1})</h4>
                   <div className="sidebar-players">
-                    {/* Host Pill */}
                     <div className="player-pill-compact" style={{
                       borderColor: isHost ? "#ff8f9f" : undefined,
                       borderWidth: isHost ? 3 : undefined,
@@ -958,7 +974,6 @@ export default function RoomPage({ params }) {
                       <span style={{ fontSize: "0.75rem", color: "#065f46", fontWeight: "bold" }}>HOST</span>
                     </div>
 
-                    {/* Player Pills */}
                     {players.map(p => {
                       const isMe = p.player_id === user?.playerId;
                       const showBalance = isMe || isHost || phase === "lobby" || phase === "results" || isGameFinished;
@@ -986,7 +1001,7 @@ export default function RoomPage({ params }) {
             </div>
 
             <small style={{ opacity: 0.5 }}>{msg}</small>
-          </article>
+          </div>
         </section>
       </main>
 
