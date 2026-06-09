@@ -261,7 +261,13 @@ export default function DoodleCanvas({
       startCy: e.clientY,
       containerW: rect?.width  ?? 800,
       containerH: rect?.height ?? 480,
-      startEl: hasPts ? null : { x_ratio: el.x_ratio, y_ratio: el.y_ratio, w_ratio: el.w_ratio, h_ratio: el.h_ratio },
+      startEl: hasPts ? null : {
+        x_ratio: el.x_ratio,
+        y_ratio: el.y_ratio,
+        w_ratio: el.w_ratio,
+        h_ratio: el.h_ratio,
+        fontSizeScale: el.fontSizeScale ?? 1.0
+      },
       startPts:  hasPts ? [...el.points_ratio] : null,
       startBBox: hasPts ? computeBBox(el.points_ratio) : null,
     };
@@ -291,7 +297,22 @@ export default function DoodleCanvas({
         x_ratio = rd.startEl.x_ratio + (rd.startEl.w_ratio - newW);
         w_ratio = newW;
       }
-      setLiveElements(prev => prev.map(el => el.id !== rd.id ? el : { ...el, x_ratio, y_ratio, w_ratio, h_ratio }));
+
+      // If dragging corner handles on a text block, scale font size proportionally
+      let nextFontSizeScale = rd.startEl.fontSizeScale ?? 1.0;
+      if (rd.type !== "IMAGE_BLOCK" && ["nw", "ne", "se", "sw"].includes(h)) {
+        const scaleX = w_ratio / rd.startEl.w_ratio;
+        nextFontSizeScale = Math.max(0.1, Math.min(10.0, (rd.startEl.fontSizeScale ?? 1.0) * scaleX));
+      }
+
+      setLiveElements(prev => prev.map(el => el.id !== rd.id ? el : {
+        ...el,
+        x_ratio,
+        y_ratio,
+        w_ratio,
+        h_ratio,
+        fontSizeScale: nextFontSizeScale
+      }));
     } else if (rd.startBBox && rd.startPts) {
       // Points element: scale all points proportionally
       const old = rd.startBBox;
@@ -1049,7 +1070,7 @@ export default function DoodleCanvas({
           const elementIdx = liveElements.indexOf(el);
           const isText = el.type === "TEXT_BLOCK" || el.type === "ANSWER_BLOCK";
           const scaleFactor = Math.max(0.0001, isText
-            ? (0.14 * el.w_ratio * (el.fontSizeScale ?? 1.0) * canvasWidth) / 40
+            ? (0.028 * (el.fontSizeScale ?? 1.0) * canvasWidth) / 40
             : 1.0);
           return (
           <div
