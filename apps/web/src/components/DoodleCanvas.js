@@ -502,8 +502,8 @@ export default function DoodleCanvas({
     return {
       px: clientX - rect.left,   // raw px relative to container (for draw-target preview)
       py: clientY - rect.top,
-      rx: Math.max(0, Math.min(1, cx / rect.width)),   // ratio [0,1]
-      ry: Math.max(0, Math.min(1, cy / rect.height)),
+      rx: cx / rect.width,
+      ry: cy / rect.height,
       cw: rect.width,
       ch: rect.height,
     };
@@ -595,8 +595,8 @@ export default function DoodleCanvas({
       const minX = Math.min(s.x, curPx.x);
       const minY = Math.min(s.y, curPx.y);
       setDrawingRect({
-        x_ratio: Math.max(0, minX / rect.width),
-        y_ratio: Math.max(0, minY / rect.height),
+        x_ratio: minX / rect.width,
+        y_ratio: minY / rect.height,
         w_ratio: Math.abs(curPx.x - s.x) / rect.width,
         h_ratio: Math.abs(curPx.y - s.y) / rect.height,
       });
@@ -674,10 +674,10 @@ export default function DoodleCanvas({
         const w    = Math.abs(ex - s.x);
         const h    = Math.abs(ey - s.y);
         // §2 ratio conversion: divide by live container dimensions (not hardcoded C_W/C_H)
-        const x_ratio = Math.max(0, minX / rect.width);
-        const y_ratio = Math.max(0, minY / rect.height);
-        const w_ratio = Math.min(1 - x_ratio, w / rect.width);
-        const h_ratio = Math.min(1 - y_ratio, h / rect.height);
+        const x_ratio = minX / rect.width;
+        const y_ratio = minY / rect.height;
+        const w_ratio = w / rect.width;
+        const h_ratio = h / rect.height;
         if (w_ratio > 0.01 && h_ratio > 0.01) {
           // §1 Z-index: append to END of slideElements array (renders on top)
           commitElements([...liveElements, {
@@ -703,8 +703,8 @@ export default function DoodleCanvas({
         id: randomUUID(),
         type: isAnswer ? "ANSWER_BLOCK" : "TEXT_BLOCK",
         content: isAnswer ? "Move me! 🙈" : "Text Block",
-        x_ratio: Math.max(0.01, rx - 0.11),
-        y_ratio: Math.max(0.01, ry - 0.05),
+        x_ratio: rx - 0.11,
+        y_ratio: ry - 0.05,
         w_ratio: 0.22,
         h_ratio: 0.10,
         fontSizeScale: 1.0,
@@ -788,11 +788,10 @@ export default function DoodleCanvas({
     const dy = (e.clientY - bd.startCy) / (s * bd.containerH);
     if (Math.hypot(e.clientX - bd.startCx, e.clientY - bd.startCy) > DRAG_THRESHOLD) bd.hasMoved = true;
     if (!bd.hasMoved) return;
-    // §2 clamp to [0.01, 0.94] so block never escapes canvas ratio space
     setLiveElements(prev => prev.map(el => el.id !== bd.id ? el : {
       ...el,
-      x_ratio: Math.max(0.01, Math.min(1 - el.w_ratio - 0.01, bd.startXR + dx)),
-      y_ratio: Math.max(0.01, Math.min(1 - el.h_ratio - 0.01, bd.startYR + dy)),
+      x_ratio: bd.startXR + dx,
+      y_ratio: bd.startYR + dy,
     }));
   }
 
@@ -830,8 +829,8 @@ export default function DoodleCanvas({
             id: randomUUID(),
             type: "IMAGE_BLOCK",
             src: ev.target.result,
-            x_ratio: Math.max(0, Math.min(0.70, rx - 0.15)),
-            y_ratio: Math.max(0, Math.min(0.70, ry - 0.10)),
+            x_ratio: rx - 0.15,
+            y_ratio: ry - 0.10,
             w_ratio: 0.30,
             h_ratio: 0.20,
           };
@@ -850,8 +849,8 @@ export default function DoodleCanvas({
             id: randomUUID(),
             type: "TEXT_BLOCK",
             content: text.trim().slice(0, 200),
-            x_ratio: Math.max(0, Math.min(0.78, rx - 0.11)),
-            y_ratio: Math.max(0, Math.min(0.90, ry - 0.05)),
+            x_ratio: rx - 0.11,
+            y_ratio: ry - 0.05,
             w_ratio: 0.22,
             h_ratio: 0.10,
             fontSizeScale: 1.0,
@@ -992,13 +991,14 @@ export default function DoodleCanvas({
           width: "100%",
           height: "100%",
           cursor,
+          overflow: "visible",
         }}>
         {/* Background SVG layer: rough border and fill */}
         <svg
           ref={bgSvgRef}
           viewBox={`0 0 ${C_W} ${C_H}`}
           preserveAspectRatio="none"
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "visible" }}
         />
 
         {question?.canvasImage && (
@@ -1147,7 +1147,7 @@ export default function DoodleCanvas({
           ref={svgRef}
           viewBox={`0 0 ${C_W} ${C_H}`}
           preserveAspectRatio="none"
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 100 }}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 100, overflow: "visible" }}
         />
 
         {/* ── Transparent hit-areas for SVG-only elements (creator select mode) ── */}
@@ -1165,8 +1165,8 @@ export default function DoodleCanvas({
               bw = Math.max(...xs) - bx; bh = Math.max(...ys) - by;
             }
             const PAD = 0.01;
-            const ox = Math.max(0, bx - PAD), oy = Math.max(0, by - PAD);
-            const ow = Math.min(1 - ox, bw + PAD * 2), oh = Math.min(1 - oy, bh + PAD * 2);
+            const ox = bx - PAD, oy = by - PAD;
+            const ow = bw + PAD * 2, oh = bh + PAD * 2;
             const isSelected = el.id === selectedElemId;
             const elementIdx = liveElements.indexOf(el);
             return (
@@ -1215,15 +1215,15 @@ export default function DoodleCanvas({
 
                   if (bd.startPts) {
                     const nextPts = bd.startPts.map(p => ({
-                      x: Math.max(0.01, Math.min(0.99, p.x + dx)),
-                      y: Math.max(0.01, Math.min(0.99, p.y + dy)),
+                      x: p.x + dx,
+                      y: p.y + dy,
                     }));
                     setLiveElements(prev => prev.map(x => x.id !== bd.id ? x : { ...x, points_ratio: nextPts }));
                   } else {
                     setLiveElements(prev => prev.map(x => x.id !== bd.id ? x : {
                       ...x,
-                      x_ratio: Math.max(0.01, Math.min(1 - x.w_ratio - 0.01, bd.startXR + dx)),
-                      y_ratio: Math.max(0.01, Math.min(1 - x.h_ratio - 0.01, bd.startYR + dy)),
+                      x_ratio: bd.startXR + dx,
+                      y_ratio: bd.startYR + dy,
                     }));
                   }
                 }}
