@@ -996,9 +996,9 @@ export default function DoodleCanvas({
         {/* Background SVG layer: rough border and fill */}
         <svg
           ref={bgSvgRef}
-          viewBox={`0 0 ${C_W} ${C_H}`}
+          viewBox="-2000 -2000 4500 4500"
           preserveAspectRatio="none"
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "visible" }}
+          style={{ position: "absolute", width: "900%", height: "900%", left: "-400%", top: "-400%", pointerEvents: "none", overflow: "visible" }}
         />
 
         {question?.canvasImage && (
@@ -1145,9 +1145,9 @@ export default function DoodleCanvas({
         {/* Foreground SVG layer: targets, zones, drawings, previews, selection highlights */}
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${C_W} ${C_H}`}
+          viewBox="-2000 -2000 4500 4500"
           preserveAspectRatio="none"
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 100, overflow: "visible" }}
+          style={{ position: "absolute", width: "900%", height: "900%", left: "-400%", top: "-400%", pointerEvents: "none", zIndex: 100, overflow: "visible" }}
         />
 
         {/* ── Transparent hit-areas for SVG-only elements (creator select mode) ── */}
