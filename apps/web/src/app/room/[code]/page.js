@@ -91,6 +91,7 @@ export default function RoomPage({ params }) {
   const submittedRef   = useRef(false);
   const timerRef       = useRef(null);
   const prevDeadlineRef= useRef(null);
+  const prevRoundIdxRef = useRef(null);
   const joinedRef      = useRef(false);
   const userRef        = useRef(null);
   const isHostRef      = useRef(false);
@@ -342,18 +343,30 @@ export default function RoomPage({ params }) {
     if (room.round_deadline_at === prevDeadlineRef.current) return;
     prevDeadlineRef.current = room.round_deadline_at;
 
-    submittedRef.current = false;
-    localWinRef.current  = false;
-    lastClickRef.current = null;
-    lastGaugeRef.current = null;
-    startMsRef.current   = Date.now();
-    setRoundResult(null);
-    setReviewQuestionIndex(null);
-    setPlayerClicks([]);
-    syncPhase("active");
-    setShowOverlay(true);
-    setMsg("Round started! Find the hidden target zone.");
+    // Determine if this is a genuinely NEW round vs the same round's deadline being shortened (early end)
+    const currentRoundIdx = room.current_round_index ?? 0;
+    const isNewRound = currentRoundIdx !== prevRoundIdxRef.current;
+    prevRoundIdxRef.current = currentRoundIdx;
 
+    if (isNewRound) {
+      // ── Full reset for a brand-new round ──
+      submittedRef.current = false;
+      localWinRef.current  = false;
+      lastClickRef.current = null;
+      lastGaugeRef.current = null;
+      startMsRef.current   = Date.now();
+      setRoundResult(null);
+      setReviewQuestionIndex(null);
+      setPlayerClicks([]);
+      syncPhase("active");
+      setShowOverlay(true);
+      setMsg("Round started! Find the hidden target zone.");
+    }
+    // else: same round, deadline was just adjusted (early end by host).
+    //       Do NOT reset localWinRef / lastClickRef / phase — the player's
+    //       click result must be preserved.
+
+    // (Re)start the countdown timer regardless
     clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       const left = new Date(room.round_deadline_at).getTime() - Date.now();
