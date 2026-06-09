@@ -949,6 +949,19 @@ export default function DoodleCanvas({
     return () => container.removeEventListener("keydown", onKeyDown);
   }, [isCreator]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const adjustTextareaParentHeight = (textarea, scaleFactor, hRatio) => {
+    if (!textarea) return;
+    const parent = textarea.parentElement;
+    if (parent) {
+      textarea.style.height = 'auto';
+      const unscaledHeight = textarea.scrollHeight;
+      textarea.style.height = `${unscaledHeight}px`;
+      const visualHeight = unscaledHeight * scaleFactor;
+      const minParentHeight = hRatio * canvasWidth;
+      parent.style.minHeight = `${Math.max(minParentHeight, visualHeight)}px`;
+    }
+  };
+
   const cursor = disabled ? "default"
     : isCreator && creatorMode === "draw-target"   ? "crosshair"
     : isCreator && creatorMode === "draw-freeform" ? "crosshair"
@@ -1140,12 +1153,16 @@ export default function DoodleCanvas({
               <textarea
                 autoFocus
                 defaultValue={el.content}
+                ref={node => {
+                  if (node) {
+                    adjustTextareaParentHeight(node, scaleFactor, el.h_ratio);
+                  }
+                }}
                 style={{
                   position: "absolute",
                   left: "50%",
                   top: "50%",
                   width: `${90 / scaleFactor}%`,
-                  height: `${90 / scaleFactor}%`,
                   transform: `translate(-50%, -50%) scale(${scaleFactor})`,
                   transformOrigin: "center center",
                   border: "none",
@@ -1161,11 +1178,25 @@ export default function DoodleCanvas({
                   boxSizing: "border-box",
                 }}
                 onPointerDown={e => e.stopPropagation()}
-                onChange={e => { editingTextValueRef.current = e.target.value; }}
+                onChange={e => {
+                  editingTextValueRef.current = e.target.value;
+                  adjustTextareaParentHeight(e.target, scaleFactor, el.h_ratio);
+                }}
                 onBlur={() => { commitTextEdit(); setEditingTextId(null); }}
               />
             ) : (
               <div
+                ref={node => {
+                  if (node) {
+                    const parent = node.parentElement;
+                    if (parent) {
+                      const unscaledHeight = node.offsetHeight;
+                      const visualHeight = unscaledHeight * scaleFactor;
+                      const minParentHeight = el.h_ratio * canvasWidth;
+                      parent.style.minHeight = `${Math.max(minParentHeight, visualHeight)}px`;
+                    }
+                  }
+                }}
                 style={{
                   position: "absolute",
                   left: "50%",
