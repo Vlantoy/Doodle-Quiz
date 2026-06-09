@@ -180,6 +180,20 @@ export default function DoodleCanvas({
   const onZoomPanChangeRef = useRef(onZoomPanChange);
   useEffect(() => { onZoomPanChangeRef.current = onZoomPanChange; }, [onZoomPanChange]);
 
+  const [canvasWidth, setCanvasWidth] = useState(500);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setCanvasWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(el);
+    setCanvasWidth(el.getBoundingClientRect().width);
+    return () => observer.disconnect();
+  }, []);
+
   // Selection (creator only): which element is selected on the canvas
   const [selectedElemId, _setSelectedElemId] = useState(null);
   const selectedElemIdRef = useRef(null);
@@ -1020,6 +1034,10 @@ export default function DoodleCanvas({
         {domBlocks.map((el, arrayIdx) => {
           const isSelected = isCreator && el.id === selectedElemId;
           const elementIdx = liveElements.indexOf(el);
+          const isText = el.type === "TEXT_BLOCK" || el.type === "ANSWER_BLOCK";
+          const scaleFactor = Math.max(0.0001, isText
+            ? (0.14 * el.w_ratio * (el.fontSizeScale ?? 1.0) * canvasWidth) / 40
+            : 1.0);
           return (
           <div
             key={el.id}
@@ -1044,9 +1062,8 @@ export default function DoodleCanvas({
                 : el.type === "ANSWER_BLOCK"
                 ? (el.isMovableByPlayer ? "#c8e6ff" : "#ddd6fe")
                 : "#ffd7ba",
-              padding: el.type === "IMAGE_BLOCK" ? 0 : "5px 8px",
+              padding: 0,
               fontFamily: "Patrick Hand, cursive",
-              fontSize: `${(el.fontSizeScale ?? 1.0) * 14}cqw`,
               containerType: "inline-size",
               cursor: (el.isMovableByPlayer || isCreator) ? "grab" : "default",
               // Use its index in liveElements to stack elements correctly
@@ -1058,7 +1075,6 @@ export default function DoodleCanvas({
                 ? "auto"
                 : "none",
               boxSizing: "border-box",
-              wordBreak: "break-word",
               overflow: (isCreator && creatorMode === "pan") ? "visible" : "hidden",
               display: "flex", alignItems: "center", justifyContent: "center",
               textAlign: "center",
@@ -1124,23 +1140,52 @@ export default function DoodleCanvas({
               <textarea
                 autoFocus
                 defaultValue={el.content}
-                style={{                  width: "100%", height: "100%", minHeight: 32,
-                  border: "none", outline: "none", resize: "none",
-                  background: "transparent", fontFamily: "Patrick Hand, cursive",
-                  fontSize: `${(el.fontSizeScale ?? 1.0) * 14}cqw`, textAlign: "center", padding: "2px 4px",
-                  cursor: "text", boxSizing: "border-box",
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  width: `${90 / scaleFactor}%`,
+                  height: `${90 / scaleFactor}%`,
+                  transform: `translate(-50%, -50%) scale(${scaleFactor})`,
+                  transformOrigin: "center center",
+                  border: "none",
+                  outline: "none",
+                  resize: "none",
+                  background: "transparent",
+                  fontFamily: "Patrick Hand, cursive",
+                  fontSize: "40px",
+                  lineHeight: "1.2",
+                  textAlign: "center",
+                  padding: "2px 4px",
+                  cursor: "text",
+                  boxSizing: "border-box",
                 }}
                 onPointerDown={e => e.stopPropagation()}
                 onChange={e => { editingTextValueRef.current = e.target.value; }}
                 onBlur={() => { commitTextEdit(); setEditingTextId(null); }}
               />
             ) : (
-              <>
+              <div
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  width: `${90 / scaleFactor}%`,
+                  transform: `translate(-50%, -50%) scale(${scaleFactor})`,
+                  transformOrigin: "center center",
+                  fontSize: "40px",
+                  lineHeight: "1.2",
+                  textAlign: "center",
+                  display: "block",
+                  wordBreak: "break-word",
+                  pointerEvents: "none",
+                }}
+              >
                 {el.content}
                 {isCreator && el.isMovableByPlayer && (
-                  <span style={{ marginLeft: 4, fontSize: "0.7rem", opacity: 0.55, flexShrink: 0 }}>⇕</span>
+                  <span style={{ marginLeft: 4, fontSize: "28px", opacity: 0.55, display: "inline-block", verticalAlign: "middle" }}>⇕</span>
                 )}
-              </>
+              </div>
             )}
           </div>
           );
