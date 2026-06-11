@@ -354,15 +354,19 @@ export async function startRound(payload, hostSecret = "") {
   const deadlineAt = new Date(Date.now() + durationSec * 1000).toISOString();
 
   // Update room with round index and deadline
-  const { error: updateError } = await supabase
+  const { data: updatedRoom, error: updateError } = await supabase
     .from("rooms")
     .update({
       current_round: payload.roundIndex,
       round_deadline: deadlineAt
     })
-    .eq("code", code);
+    .eq("code", code)
+    .select();
 
   if (updateError) throw updateError;
+  if (!updatedRoom || updatedRoom.length === 0) {
+    throw new Error("Update blocked. Please check your Supabase RLS policies for the 'rooms' table (allow UPDATE).");
+  }
 
   // Reset players cược state for the new round
   const { error: resetPlayersError } = await supabase
@@ -370,7 +374,8 @@ export async function startRound(payload, hostSecret = "") {
     .update({
       last_submitted_round: -1 // Reset cược submission indicator for the new round
     })
-    .eq("room_code", code);
+    .eq("room_code", code)
+    .select();
 
   if (resetPlayersError) throw resetPlayersError;
 
@@ -404,7 +409,7 @@ export async function updatePlayerBalance(playerId, roomCode, newBalance, isBank
     return { success: true };
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("players")
     .update({
       balance: newBalance,
@@ -412,9 +417,13 @@ export async function updatePlayerBalance(playerId, roomCode, newBalance, isBank
       last_submitted_round: roundIndex
     })
     .eq("id", playerId)
-    .eq("room_code", code);
+    .eq("room_code", code)
+    .select();
 
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error("Update blocked. Please check your Supabase RLS policies for the 'players' table (allow UPDATE).");
+  }
   return { success: true };
 }
 
@@ -435,12 +444,16 @@ export async function cleanupRoom(payload, hostSecret = "") {
   }
 
   // Delete room row (cascades and deletes players automatically)
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("rooms")
     .delete()
-    .eq("code", code);
+    .eq("code", code)
+    .select();
 
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error("Delete blocked. Please check your Supabase RLS policies for the 'rooms' table (allow DELETE).");
+  }
 
   return { cleaned: true };
 }

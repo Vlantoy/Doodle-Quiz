@@ -576,7 +576,6 @@ export default function RoomPage({ params }) {
     }
   }
 
-  // ── Host actions ──────────────────────────────────────────────────────────────
   async function hostStartQuiz() {
     if (!isHost) return;
     let currentRoom = room;
@@ -587,8 +586,13 @@ export default function RoomPage({ params }) {
       currentRoom = data?.room;
       if (!currentRoom) { setMsg("Failed to load room data."); return; }
     }
+    const currentUser = userRef.current || user || getOrCreateUser();
+    if (!currentUser || !currentUser.playerId) {
+      setMsg("Failed to start: User profile is not initialized.");
+      return;
+    }
     try {
-      await startRound({ roomCode, hostPlayerId: user.playerId, roundIndex: 0 }, hostSecret);
+      await startRound({ roomCode, hostPlayerId: currentUser.playerId, roundIndex: 0 }, hostSecret);
       await refreshBootstrap();
     } catch (err) { setMsg(`Start failed: ${err.message}`); }
   }
