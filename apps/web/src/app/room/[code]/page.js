@@ -233,13 +233,15 @@ export default function RoomPage({ params }) {
     clearInterval(autoTimerRef.current);
     setAutoSec(0);
     if (phase !== "results") return;
-    if (!isHostRef.current) return;
+    if (!isHost) return;
     const snap = bootstrapRef.current || bootstrap;
     const snapRoom = snap?.room;
     if (!snapRoom) return;
     const nextIdx = snapRoom.current_round_index + 1;
     const total = snapRoom.quiz_payload?.questions?.length ?? 0;
     if (nextIdx >= total) return; // last question — no auto-advance
+
+    console.log("[DEBUG] Starting auto-advance countdown to round:", nextIdx);
     let sec = 3;
     setAutoSec(sec);
     autoTimerRef.current = setInterval(() => {
@@ -247,15 +249,25 @@ export default function RoomPage({ params }) {
       setAutoSec(sec);
       if (sec <= 0) {
         clearInterval(autoTimerRef.current);
-        const u = userRef.current;
-        if (!u) return;
+        const u = userRef.current || user;
+        if (!u) {
+          console.error("[DEBUG] Auto-advance failed: user profile is null");
+          return;
+        }
+        console.log("[DEBUG] Auto-advance: advancing to round:", nextIdx);
         startRound({ roomCode, hostPlayerId: u.playerId, roundIndex: nextIdx }, hostSecret)
-          .then(() => refreshBootstrap())
-          .catch(err => setMsg(`Auto-advance failed: ${err.message}`));
+          .then(() => {
+            console.log("[DEBUG] Auto-advance startRound success, refreshing...");
+            return refreshBootstrap();
+          })
+          .catch(err => {
+            console.error("[DEBUG] Auto-advance failed:", err);
+            setMsg(`Auto-advance failed: ${err.message}`);
+          });
       }
     }, 1000);
     return () => clearInterval(autoTimerRef.current);
-  }, [phase]);
+  }, [phase, isHost, bootstrap]);
 
   // ── Auto-end round early when all players have submitted ──────────────────────
   useEffect(() => {
@@ -651,26 +663,26 @@ export default function RoomPage({ params }) {
 
   async function endRoom() {
     if (!roomCode || !user) return;
-    try {
-      await cleanupRoom({ roomCode, hostPlayerId: user.playerId }, hostSecret);
-    } catch (err) {
-      console.error("Failed to end room:", err);
-    }
+    console.log("[DEBUG] endRoom: redirecting to '/' instantly...");
     router.push("/");
+    cleanupRoom({ roomCode, hostPlayerId: user.playerId }, hostSecret)
+      .then(() => console.log("[DEBUG] endRoom: database cleanup successful"))
+      .catch(err => console.error("[DEBUG] endRoom: database cleanup failed:", err));
   }
 
   async function handleLeave() {
     if (!roomCode || !user) return;
-    try {
-      if (isHost) {
-        await cleanupRoom({ roomCode, hostPlayerId: user.playerId }, hostSecret);
-      } else {
-        await deletePlayer(user.playerId, roomCode);
-      }
-    } catch (err) {
-      console.error("Failed to leave room:", err);
-    }
+    console.log("[DEBUG] handleLeave: redirecting to '/' instantly...");
     router.push("/");
+    if (isHost) {
+      cleanupRoom({ roomCode, hostPlayerId: user.playerId }, hostSecret)
+        .then(() => console.log("[DEBUG] handleLeave: host database cleanup successful"))
+        .catch(err => console.error("[DEBUG] handleLeave: host database cleanup failed:", err));
+    } else {
+      deletePlayer(user.playerId, roomCode)
+        .then(() => console.log("[DEBUG] handleLeave: player delete successful"))
+        .catch(err => console.error("[DEBUG] handleLeave: player delete failed:", err));
+    }
   }
 
   const hasGauge = question?.elements?.some(el => el.type === "GAUGE_BLOCK");
