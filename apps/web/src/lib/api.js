@@ -18,6 +18,58 @@ export async function healthCheck() {
   if (error) throw error;
   return { ok: true, service: "supabase-direct" };
 }
+/**
+ * Cleanup stale rooms (>2 hours old) and orphaned players.
+ * Runs on app startup, room entry, and before hosting — so stale data from
+ * crashed sessions, force-closed tabs, or failed beforeunload calls get cleaned.
+ * Silent: never throws.
+ */
+export async function cleanupStaleData() {
+  const cutoffMs = Date.now() - 2 * 60 * 60 * 1000; // 2 hours
+  const cutoffIso = new Date(cutoffMs).toISOString();
+
+  if (isMockMode) {
+    try {
+      const rooms = JSON.parse(localStorage.getItem("cutequiz:mock_rooms") || "[]");
+      const active = rooms.filter(r => new Date(r.created_at).getTime() > cutoffMs);
+      const activeCodes = active.map(r => r.code);
+      localStorage.setItem("cutequiz:mock_rooms", JSON.stringify(active));
+
+      const players = JSON.parse(localStorage.getItem("cutequiz:mock_players") || "[]");
+      localStorage.setItem("cutequiz:mock_players", JSON.stringify(
+        players.filter(p => activeCodes.includes(p.room_code))
+      ));
+    } catch (e) {}
+    return;
+  }
+
+  try {
+    // Delete old rooms
+    await supabase.from("rooms").delete().lt("created_at", cutoffIso);
+
+    // Delete orphaned players (whose room no longer exists)
+    const { data: validRooms } = await supabase.from("rooms").select("code");
+    const validCodes = (validRooms || []).map(r => r.code);
+
+    if (validCodes.length === 0) {
+      // No rooms at all → delete all players
+      await supabase.from("players").delete().neq("room_code", "___KEEP_NONE___");
+    } else {
+      // Delete players not in any valid room
+      // Supabase doesn't support NOT IN directly with arrays easily,
+      // so we fetch all players and delete orphans individually
+      const { data: allPlayers } = await supabase.from("players").select("id, room_code");
+      if (allPlayers) {
+        const orphans = allPlayers.filter(p => !validCodes.includes(p.room_code));
+        for (const o of orphans) {
+          await supabase.from("players").delete().eq("id", o.id).eq("room_code", o.room_code);
+        }
+      }
+    }
+  } catch (e) {
+    // Silent — never block the app
+  }
+}
 
 export async function hostRoom(payload) {
   // payload: { hostPlayerId, hostUsername, roundDurationSec, quiz }

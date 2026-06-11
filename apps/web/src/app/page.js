@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getOrCreateUser, saveUser } from "lib/storage";
-import { healthCheck } from "lib/api";
+import { healthCheck, cleanupStaleData } from "lib/api";
 import { isMockMode } from "lib/supabaseClient";
 
 
@@ -18,6 +18,8 @@ export default function HomePage() {
     const user = getOrCreateUser();
     setUsername(user?.username || "");
     healthCheck().then(() => setApiStatus("online")).catch(() => setApiStatus("offline"));
+    // Clean up stale rooms/players left from crashed sessions
+    cleanupStaleData();
   }, []);
 
   function continueToRoom() {
