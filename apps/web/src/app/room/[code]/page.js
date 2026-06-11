@@ -154,6 +154,22 @@ export default function RoomPage({ params }) {
   // ── Keep isHostRef in sync ────────────────────────────────────────────────────
   useEffect(() => { isHostRef.current = isHost; }, [isHost]);
 
+  // ── Debug State Logging ───────────────────────────────────────────────────────
+  useEffect(() => {
+    console.log("[DEBUG] State Update:", {
+      phase,
+      roomExists: !!room,
+      roomCode,
+      isHost,
+      hasHostSecret,
+      isHostByDb,
+      userExists: !!user,
+      playerId: user?.playerId,
+      playersCount: players.length,
+      roundDeadlineAt: room?.round_deadline_at,
+    });
+  }, [phase, room, roomCode, isHost, hasHostSecret, isHostByDb, user, players]);
+
   // ── Initial bootstrap fetch ─────────────────────────────────────────────────────────
   useEffect(() => {
     refreshBootstrap(true, 3);
@@ -577,24 +593,43 @@ export default function RoomPage({ params }) {
   }
 
   async function hostStartQuiz() {
-    if (!isHost) return;
+    console.log("[DEBUG] Clicked hostStartQuiz", { isHost, roomExists: !!room, userExists: !!user });
+    if (!isHost) {
+      console.warn("[DEBUG] hostStartQuiz ignored: not a host");
+      return;
+    }
     let currentRoom = room;
     // If bootstrap hasn't loaded yet, fetch it now
     if (!currentRoom) {
+      console.log("[DEBUG] hostStartQuiz: room data is null, fetching bootstrap...");
       setMsg("Loading room data...");
       const data = await refreshBootstrap(false, 3);
       currentRoom = data?.room;
-      if (!currentRoom) { setMsg("Failed to load room data."); return; }
+      if (!currentRoom) {
+        console.error("[DEBUG] hostStartQuiz: failed to load room data");
+        setMsg("Failed to load room data.");
+        return;
+      }
     }
     const currentUser = userRef.current || user || getOrCreateUser();
     if (!currentUser || !currentUser.playerId) {
+      console.error("[DEBUG] hostStartQuiz: user profile not initialized");
       setMsg("Failed to start: User profile is not initialized.");
       return;
     }
     try {
+      console.log("[DEBUG] hostStartQuiz: starting round 0 via startRound...", {
+        roomCode,
+        hostPlayerId: currentUser.playerId,
+        hostSecret
+      });
       await startRound({ roomCode, hostPlayerId: currentUser.playerId, roundIndex: 0 }, hostSecret);
+      console.log("[DEBUG] hostStartQuiz: startRound successful, refreshing bootstrap...");
       await refreshBootstrap();
-    } catch (err) { setMsg(`Start failed: ${err.message}`); }
+    } catch (err) {
+      console.error("[DEBUG] hostStartQuiz: failed to start round", err);
+      setMsg(`Start failed: ${err.message}`);
+    }
   }
 
   const isCreator = false;

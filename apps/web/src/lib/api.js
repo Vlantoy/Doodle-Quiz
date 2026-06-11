@@ -25,6 +25,17 @@ export async function healthCheck() {
  * Silent: never throws.
  */
 export async function cleanupStaleData() {
+  if (typeof window !== "undefined") {
+    try {
+      const lastClean = localStorage.getItem("cutequiz:last_cleanup");
+      const now = Date.now();
+      if (lastClean && now - Number(lastClean) < 10 * 60 * 1000) {
+        return; // Skip: cleaned up less than 10 minutes ago
+      }
+      localStorage.setItem("cutequiz:last_cleanup", String(now));
+    } catch (e) {}
+  }
+
   const cutoffMs = Date.now() - 2 * 60 * 60 * 1000; // 2 hours
   const cutoffIso = new Date(cutoffMs).toISOString();
 
@@ -44,27 +55,19 @@ export async function cleanupStaleData() {
   }
 
   try {
-    // Delete old rooms
+    // 1. Delete old rooms (cascades to players table automatically)
     await supabase.from("rooms").delete().lt("created_at", cutoffIso);
 
-    // Delete orphaned players (whose room no longer exists)
+    // 2. Batch clean up any remaining orphaned players
     const { data: validRooms } = await supabase.from("rooms").select("code");
     const validCodes = (validRooms || []).map(r => r.code);
 
     if (validCodes.length === 0) {
-      // No rooms at all → delete all players
-      await supabase.from("players").delete().neq("room_code", "___KEEP_NONE___");
+      // No active rooms → delete all players
+      await supabase.from("players").delete().neq("username", "");
     } else {
-      // Delete players not in any valid room
-      // Supabase doesn't support NOT IN directly with arrays easily,
-      // so we fetch all players and delete orphans individually
-      const { data: allPlayers } = await supabase.from("players").select("id, room_code");
-      if (allPlayers) {
-        const orphans = allPlayers.filter(p => !validCodes.includes(p.room_code));
-        for (const o of orphans) {
-          await supabase.from("players").delete().eq("id", o.id).eq("room_code", o.room_code);
-        }
-      }
+      // Delete players not in any valid room in a single query
+      await supabase.from("players").delete().not("room_code", "in", validCodes);
     }
   } catch (e) {
     // Silent — never block the app
@@ -314,7 +317,8 @@ export async function startRound(payload, hostSecret = "") {
 
     const questions = rooms[roomIdx].quiz_data?.questions ?? [];
     const activeQ = questions[payload.roundIndex];
-    const durationSec = activeQ?.duration ? Number(activeQ.duration) : (rooms[roomIdx].round_duration || 20);
+    const rawDuration = Number(activeQ?.duration);
+    const durationSec = (!isNaN(rawDuration) && rawDuration > 0) ? rawDuration : (rooms[roomIdx].round_duration || 20);
     const deadlineAt = new Date(Date.now() + durationSec * 1000).toISOString();
 
     rooms[roomIdx].current_round = payload.roundIndex;
@@ -350,7 +354,8 @@ export async function startRound(payload, hostSecret = "") {
 
   const questions = room.quiz_data?.questions ?? [];
   const activeQ = questions[payload.roundIndex];
-  const durationSec = activeQ?.duration ? Number(activeQ.duration) : (room.round_duration || 20);
+  const rawDuration = Number(activeQ?.duration);
+  const durationSec = (!isNaN(rawDuration) && rawDuration > 0) ? rawDuration : (room.round_duration || 20);
   const deadlineAt = new Date(Date.now() + durationSec * 1000).toISOString();
 
   // Update room with round index and deadline
