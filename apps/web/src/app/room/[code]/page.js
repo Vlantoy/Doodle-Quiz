@@ -109,7 +109,10 @@ export default function RoomPage({ params }) {
   const room      = bootstrap?.room;
   const players   = bootstrap?.players ?? [];
   const me        = players.find(p => p.player_id === user?.playerId) ?? null;
-  const isHost    = !!(room && user && room.host_player_id === user.playerId);
+  // Host detection: primary check via DB + fallback via localStorage hostSecret
+  const isHostByDb = !!(room && user && room.host_player_id === user.playerId);
+  const isHostBySecret = !!(hostSecret && hostSecret !== "" && room);
+  const isHost    = isHostByDb || isHostBySecret;
   const totalQ    = room?.quiz_payload?.questions?.length ?? 0;
   const activeQuestionIndex = reviewQuestionIndex !== null ? reviewQuestionIndex : (room?.current_round_index ?? 0);
   const question  = room?.quiz_payload?.questions?.[activeQuestionIndex] ?? null;
@@ -120,15 +123,22 @@ export default function RoomPage({ params }) {
   const restPlayers = sortedPlayers.slice(3);
   const userRankIndex = sortedPlayers.findIndex(p => p.player_id === user?.playerId);
 
-  async function refreshBootstrap(silent = false) {
-    try {
-      const data = await getBootstrap(roomCode);
-      bootstrapRef.current = data;
-      setBootstrap(data);
-      return data;
-    } catch (err) {
-      if (!silent) setMsg(`Sync error: ${err.message}`);
-      return null;
+  async function refreshBootstrap(silent = false, retries = 2) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const data = await getBootstrap(roomCode);
+        bootstrapRef.current = data;
+        setBootstrap(data);
+        return data;
+      } catch (err) {
+        if (attempt < retries) {
+          // Wait briefly and retry (handles cold-start timeouts)
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
+        if (!silent) setMsg(`Sync error: ${err.message}`);
+        return null;
+      }
     }
   }
 
@@ -144,9 +154,18 @@ export default function RoomPage({ params }) {
   // ── Keep isHostRef in sync ────────────────────────────────────────────────────
   useEffect(() => { isHostRef.current = isHost; }, [isHost]);
 
-  // ── Initial join ──────────────────────────────────────────────────────────────
+  // ── Initial join (with warm-up for paused Supabase free tier) ──────────────
   useEffect(() => {
-    refreshBootstrap(true);
+    // Warm-up ping to wake database before critical bootstrap fetch
+    if (!isMockMode) {
+      supabase.from("rooms").select("code", { count: "exact", head: true }).then(() => {
+        refreshBootstrap(true, 3);
+      }).catch(() => {
+        refreshBootstrap(true, 3);
+      });
+    } else {
+      refreshBootstrap(true);
+    }
   }, []);
 
   useEffect(() => {
