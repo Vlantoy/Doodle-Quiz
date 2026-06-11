@@ -578,7 +578,15 @@ export default function RoomPage({ params }) {
 
   // ── Host actions ──────────────────────────────────────────────────────────────
   async function hostStartQuiz() {
-    if (!isHost || !room) return;
+    if (!isHost) return;
+    let currentRoom = room;
+    // If bootstrap hasn't loaded yet, fetch it now
+    if (!currentRoom) {
+      setMsg("Loading room data...");
+      const data = await refreshBootstrap(false, 3);
+      currentRoom = data?.room;
+      if (!currentRoom) { setMsg("Failed to load room data."); return; }
+    }
     try {
       await startRound({ roomCode, hostPlayerId: user.playerId, roundIndex: 0 }, hostSecret);
       await refreshBootstrap();
@@ -889,8 +897,8 @@ export default function RoomPage({ params }) {
               <div className="card" style={{ background: "#fff8e8", border: "2px dashed #2f2a3c", padding: "10px 12px" }}>
                 <h4 style={{ margin: "0 0 6px", fontSize: "1.05rem" }}>👑 Host Controls</h4>
                 {phase === "lobby" && !room?.round_deadline_at && (
-                  <button type="button" className="btn" style={{ width: "100%" }} onClick={hostStartQuiz}>
-                    🚀 Start Quiz
+                  <button type="button" className="btn" style={{ width: "100%" }} onClick={hostStartQuiz} disabled={!room}>
+                    {!room ? "⏳ Loading..." : "🚀 Start Quiz"}
                   </button>
                 )}
                 {phase === "results" && room?.current_round_index + 1 < totalQ && (
