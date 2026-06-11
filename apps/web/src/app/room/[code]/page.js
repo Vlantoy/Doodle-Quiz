@@ -94,7 +94,7 @@ export default function RoomPage({ params }) {
   const prevRoundIdxRef = useRef(null);
   const joinedRef      = useRef(false);
   const userRef        = useRef(null);
-  const isHostRef      = useRef(false);
+  const isHostRef      = useRef(!!(typeof window !== "undefined" && getRoomState(String(params.code || "").toUpperCase())?.hostSecret));
   const autoTimerRef   = useRef(null);
   const playerTokenRef = useRef(null);   // HMAC token from join — required by /submit-round
   const lastClickRef   = useRef(null);   // {rx, ry} of player's last canvas click this round
@@ -109,10 +109,10 @@ export default function RoomPage({ params }) {
   const room      = bootstrap?.room;
   const players   = bootstrap?.players ?? [];
   const me        = players.find(p => p.player_id === user?.playerId) ?? null;
-  // Host detection: primary check via DB + fallback via localStorage hostSecret
+  // Host detection: instant via localStorage hostSecret (no DB wait) + confirmed via DB
+  const hasHostSecret = !!(hostSecret && hostSecret !== "");
   const isHostByDb = !!(room && user && room.host_player_id === user.playerId);
-  const isHostBySecret = !!(hostSecret && hostSecret !== "" && room);
-  const isHost    = isHostByDb || isHostBySecret;
+  const isHost    = hasHostSecret || isHostByDb;
   const totalQ    = room?.quiz_payload?.questions?.length ?? 0;
   const activeQuestionIndex = reviewQuestionIndex !== null ? reviewQuestionIndex : (room?.current_round_index ?? 0);
   const question  = room?.quiz_payload?.questions?.[activeQuestionIndex] ?? null;
@@ -154,18 +154,9 @@ export default function RoomPage({ params }) {
   // ── Keep isHostRef in sync ────────────────────────────────────────────────────
   useEffect(() => { isHostRef.current = isHost; }, [isHost]);
 
-  // ── Initial join (with warm-up for paused Supabase free tier) ──────────────
+  // ── Initial bootstrap fetch ─────────────────────────────────────────────────────────
   useEffect(() => {
-    // Warm-up ping to wake database before critical bootstrap fetch
-    if (!isMockMode) {
-      supabase.from("rooms").select("code", { count: "exact", head: true }).then(() => {
-        refreshBootstrap(true, 3);
-      }).catch(() => {
-        refreshBootstrap(true, 3);
-      });
-    } else {
-      refreshBootstrap(true);
-    }
+    refreshBootstrap(true, 3);
   }, []);
 
   useEffect(() => {
@@ -193,14 +184,16 @@ export default function RoomPage({ params }) {
   }
 
   useEffect(() => {
-    if (!user || !bootstrap) return;
-    const room = bootstrap.room;
-    const isHost = !!(room && user && room.host_player_id === user.playerId);
-    if (isHost) {
+    if (!user) return;
+
+    // Host is known immediately via localStorage hostSecret — skip join flow
+    if (hasHostSecret) {
       joinedRef.current = true;
       setMsg("Spectating as Host 👑");
       return;
     }
+
+    if (!bootstrap) return;
 
     if (!hasConfirmedName) {
       setShowUsernameModal(true);
