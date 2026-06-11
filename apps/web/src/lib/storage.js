@@ -15,11 +15,12 @@ export function randomUUID() {
 
 export function getOrCreateUser() {
   if (typeof window === "undefined") return null;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   try {
     const raw = localStorage.getItem(KEY_USER);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object" && parsed.playerId) {
+      if (parsed && typeof parsed === "object" && parsed.playerId && uuidRegex.test(parsed.playerId)) {
         return parsed;
       }
     }
