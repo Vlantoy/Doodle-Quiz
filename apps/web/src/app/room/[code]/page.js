@@ -780,6 +780,7 @@ export default function RoomPage({ params }) {
                     isCreator={false}
                     revealAnswers={phase === "results" || phase === "bankrupt" || isGameFinished}
                     playerClicks={playerClicks}
+                    style={{ maxWidth: "100%" }}
                   />
                 ) : (
                   <div className="doodle-board" style={{ minHeight: 200, display: "grid", placeItems: "center", opacity: 0.4 }}>

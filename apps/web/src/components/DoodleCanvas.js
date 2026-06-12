@@ -693,6 +693,7 @@ export default function DoodleCanvas({
   selectedShapeColor = "#7c3aed",
   selectedShapeIsFilled = false,
   selectedShapeStrokeWidth = 3,
+  style = {},
 }) {
   const containerRef = useRef(null);
   const svgRef       = useRef(null);
@@ -1871,6 +1872,7 @@ export default function DoodleCanvas({
           : (gaugeEl ? "min(100%, calc((16 / 9) * (100vh - 110px)))" : "min(100%, calc((16 / 9) * (100vh - 55px)))"),
         margin: "0 auto",
         minHeight: "unset",
+        ...style,
       }}
     >
       <div
