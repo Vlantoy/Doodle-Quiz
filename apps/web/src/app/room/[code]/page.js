@@ -431,7 +431,7 @@ export default function RoomPage({ params }) {
     // Ignore gauge-only updates — these fire on DoodleCanvas mount/slider change
     // and must NOT trigger click/submit logic
     if (payload.isGaugeUpdate) {
-      lastGaugeRef.current = typeof payload.gaugeValue === "number" ? payload.gaugeValue : null;
+      lastGaugeRef.current = (payload.gaugeValue !== undefined && payload.gaugeValue !== null) ? payload.gaugeValue : null;
       return;
     }
 
@@ -450,10 +450,10 @@ export default function RoomPage({ params }) {
         const newClicks = [...prev, { rx: payload.rx, ry: payload.ry }];
         return newClicks;
       });
-      lastGaugeRef.current = typeof payload.gaugeValue === "number" ? payload.gaugeValue : null;
+      lastGaugeRef.current = (payload.gaugeValue !== undefined && payload.gaugeValue !== null) ? payload.gaugeValue : null;
     } else {
       lastClickRef.current = { rx: payload.rx, ry: payload.ry };
-      lastGaugeRef.current = typeof payload.gaugeValue === "number" ? payload.gaugeValue : null;
+      lastGaugeRef.current = (payload.gaugeValue !== undefined && payload.gaugeValue !== null) ? payload.gaugeValue : null;
       localWinRef.current = payload.isLocalHit;
       syncPhase("won_waiting");
 
@@ -466,45 +466,21 @@ export default function RoomPage({ params }) {
   }
 
   const handleMultiSubmit = () => {
+    const hasGauge = question?.elements?.some(el => el.type === "GAUGE_BLOCK");
     const correctZones = question?.elements?.filter(el =>
       (el.type === "PRECISION_TARGET" || el.type === "FREEFORM_ZONE") && el.role !== "DECOY"
     ) ?? [];
 
-    if (playerClicks.length !== correctZones.length) return;
+    if (!hasGauge && playerClicks.length !== correctZones.length) return;
 
-    let won = false;
-    if (question?.requireSequence) {
-      // Click in sequence order (Click i matches Zone i)
-      let seqOk = true;
-      for (let i = 0; i < correctZones.length; i++) {
-        const click = playerClicks[i];
-        const zone = correctZones[i];
-        let hit = false;
-        if (zone.type === "PRECISION_TARGET") {
-          if (
-            click.rx >= zone.x_ratio && click.rx <= zone.x_ratio + zone.w_ratio &&
-            click.ry >= zone.y_ratio && click.ry <= zone.y_ratio + zone.h_ratio
-          ) { hit = true; }
-        } else if (zone.type === "FREEFORM_ZONE") {
-          if (zone.points_ratio?.length >= 3 && pointInPolygon(click.rx, click.ry, zone.points_ratio)) {
-            hit = true;
-          }
-        }
-        if (!hit) {
-          seqOk = false;
-          break;
-        }
-      }
-      won = seqOk;
-    } else {
-      // Click in any order (each correct zone matched exactly once)
-      const visited = new Array(correctZones.length).fill(false);
-      function match(clickIdx) {
-        if (clickIdx === playerClicks.length) return true;
-        const click = playerClicks[clickIdx];
-        for (let zIdx = 0; zIdx < correctZones.length; zIdx++) {
-          if (visited[zIdx]) continue;
-          const zone = correctZones[zIdx];
+    let won = true;
+    if (!hasGauge) {
+      if (question?.requireSequence) {
+        // Click in sequence order (Click i matches Zone i)
+        let seqOk = true;
+        for (let i = 0; i < correctZones.length; i++) {
+          const click = playerClicks[i];
+          const zone = correctZones[i];
           let hit = false;
           if (zone.type === "PRECISION_TARGET") {
             if (
@@ -516,22 +492,61 @@ export default function RoomPage({ params }) {
               hit = true;
             }
           }
-          if (hit) {
-            visited[zIdx] = true;
-            if (match(clickIdx + 1)) return true;
-            visited[zIdx] = false;
+          if (!hit) {
+            seqOk = false;
+            break;
           }
         }
-        return false;
+        won = seqOk;
+      } else {
+        // Click in any order (each correct zone matched exactly once)
+        const visited = new Array(correctZones.length).fill(false);
+        function match(clickIdx) {
+          if (clickIdx === playerClicks.length) return true;
+          const click = playerClicks[clickIdx];
+          for (let zIdx = 0; zIdx < correctZones.length; zIdx++) {
+            if (visited[zIdx]) continue;
+            const zone = correctZones[zIdx];
+            let hit = false;
+            if (zone.type === "PRECISION_TARGET") {
+              if (
+                click.rx >= zone.x_ratio && click.rx <= zone.x_ratio + zone.w_ratio &&
+                click.ry >= zone.y_ratio && click.ry <= zone.y_ratio + zone.h_ratio
+              ) { hit = true; }
+            } else if (zone.type === "FREEFORM_ZONE") {
+              if (zone.points_ratio?.length >= 3 && pointInPolygon(click.rx, click.ry, zone.points_ratio)) {
+                hit = true;
+              }
+            }
+            if (hit) {
+              visited[zIdx] = true;
+              if (match(clickIdx + 1)) return true;
+              visited[zIdx] = false;
+            }
+          }
+          return false;
+        }
+        won = match(0);
       }
-      won = match(0);
     }
 
     const gaugeEl = question?.elements?.find(el => el.type === "GAUGE_BLOCK");
-    const gaugeValue = typeof lastGaugeRef.current === "number" ? lastGaugeRef.current : 50;
-    const gaugeOk = !gaugeEl ||
-      typeof gaugeEl.correctMin !== "number" ||
-      (gaugeValue >= gaugeEl.correctMin && gaugeValue <= gaugeEl.correctMax);
+    const gaugeValue = lastGaugeRef.current !== undefined && lastGaugeRef.current !== null
+      ? lastGaugeRef.current
+      : (gaugeEl?.labels ? gaugeEl.labels.split(",")[0]?.trim() : 50);
+
+    let gaugeOk = true;
+    if (gaugeEl) {
+      if (gaugeEl.labels) {
+        const correctVal = gaugeEl.correctValue ?? gaugeEl.labels.split(",")[0]?.trim();
+        gaugeOk = String(gaugeValue).trim() === String(correctVal).trim();
+      } else {
+        const correctMin = typeof gaugeEl.correctMin === "number" ? gaugeEl.correctMin : (Number(gaugeEl.correctValue) || gaugeEl.min || 0);
+        const correctMax = typeof gaugeEl.correctMax === "number" ? gaugeEl.correctMax : (Number(gaugeEl.correctValue) || gaugeEl.max || 100);
+        const valNum = Number(gaugeValue);
+        gaugeOk = !isNaN(valNum) && valNum >= correctMin && valNum <= correctMax;
+      }
+    }
 
     const finalWin = won && gaugeOk;
 
@@ -559,6 +574,32 @@ export default function RoomPage({ params }) {
     if (snapMe.is_bankrupt)   { syncPhase("bankrupt"); return; }
 
     syncPhase("submitting");
+
+    // Fallback evaluation for gauge-only questions when the player runs out of time without submitting
+    if (localWinRef.current === null || localWinRef.current === undefined) {
+      const hasGauge = question?.elements?.some(el => el.type === "GAUGE_BLOCK");
+      if (hasGauge) {
+        const gaugeEl = question?.elements?.find(el => el.type === "GAUGE_BLOCK");
+        const gaugeValue = lastGaugeRef.current !== undefined && lastGaugeRef.current !== null
+          ? lastGaugeRef.current
+          : (gaugeEl?.labels ? gaugeEl.labels.split(",")[0]?.trim() : 50);
+
+        let gaugeOk = true;
+        if (gaugeEl) {
+          if (gaugeEl.labels) {
+            const correctVal = gaugeEl.correctValue ?? gaugeEl.labels.split(",")[0]?.trim();
+            gaugeOk = String(gaugeValue).trim() === String(correctVal).trim();
+          } else {
+            const correctMin = typeof gaugeEl.correctMin === "number" ? gaugeEl.correctMin : (Number(gaugeEl.correctValue) || gaugeEl.min || 0);
+            const correctMax = typeof gaugeEl.correctMax === "number" ? gaugeEl.correctMax : (Number(gaugeEl.correctValue) || gaugeEl.max || 100);
+            const valNum = Number(gaugeValue);
+            gaugeOk = !isNaN(valNum) && valNum >= correctMin && valNum <= correctMax;
+          }
+        }
+        localWinRef.current = gaugeOk;
+      }
+    }
+
     const clampedBet = Math.max(1, Math.min(snapMe.balance, betRef.current));
     const won        = localWinRef.current ?? false;
 
@@ -697,8 +738,8 @@ export default function RoomPage({ params }) {
             {phase === "lobby" && !room?.round_deadline_at ? (
               /* ── Lobby Waiting Screen ── */
               <div style={{
-                width: "min(100%, calc(100vh - 32px))",
-                aspectRatio: "1 / 1",
+                width: "min(100%, calc((16 / 9) * (100vh - 32px)))",
+                aspectRatio: "16 / 9",
                 border: "3px solid var(--ink)",
                 borderRadius: 18,
                 background: "white",
@@ -729,9 +770,10 @@ export default function RoomPage({ params }) {
               </div>
             ) : (
               /* ── Active Game Canvas ── */
-              <div style={{ position: "relative", width: "min(100%, calc(100vh - 32px))" }}>
+              <div style={{ position: "relative", width: "min(100%, calc((16 / 9) * (100vh - 32px)))", aspectRatio: "16 / 9" }}>
                 {question ? (
                   <DoodleCanvas
+                    key={activeQuestionIndex}
                     question={question}
                     disabled={canvasDisabled}
                     onSolve={onCanvasSolve}
@@ -975,6 +1017,7 @@ export default function RoomPage({ params }) {
 
             {/* Player Active Betting Panel */}
             {!isHost && phase === "active" && !isBankrupt && (() => {
+              const hasGauge = question?.elements?.some(el => el.type === "GAUGE_BLOCK");
               const correctZones = question?.elements?.filter(el =>
                 (el.type === "PRECISION_TARGET" || el.type === "FREEFORM_ZONE") && el.role !== "DECOY"
               ) ?? [];
@@ -994,7 +1037,19 @@ export default function RoomPage({ params }) {
                     value={bet}
                     onChange={e => syncBet(Math.max(1, Math.min(myBalance, Number(e.target.value) || 1)))}
                   />
-                  {isMultiple ? (
+                  {hasGauge ? (
+                    <div style={{ marginTop: 8 }}>
+                      <p style={{ margin: "0 0 8px", fontWeight: "bold", color: "#7c3aed", fontSize: "0.85rem", lineHeight: 1.4 }}>
+                        📊 CÂU HỎI KÉO THƯỚC ĐO:
+                        <br />
+                        Kéo thanh trượt trên thước đo đến giá trị đúng, rồi bấm nút dưới!
+                      </p>
+                      <button type="button" className="btn" style={{ width: "100%", padding: "8px 12px" }}
+                        onClick={handleMultiSubmit}>
+                        Gửi đáp án 🚀
+                      </button>
+                    </div>
+                  ) : isMultiple ? (
                     <div style={{ marginTop: 8 }}>
                       <p style={{ margin: "0 0 8px", fontWeight: "bold", color: "#7c3aed", fontSize: "0.85rem", lineHeight: 1.4 }}>
                         🧩 YÊU CẦU CLICK ĐÚNG THỨ TỰ:

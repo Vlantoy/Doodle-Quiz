@@ -139,6 +139,20 @@ const BLOCK_PALETTE = [
     description: "Place a draggable cover block players must move to reveal the answer",
     color: "#dbeafe",
   },
+  {
+    mode: "place-shape",
+    icon: "🔺",
+    label: "Hình vẽ (Shape)",
+    description: "Click canvas để đặt các hình khối vẽ tay (vuông, tròn, tam giác)",
+    color: "#e0f2fe",
+  },
+  {
+    mode: "place-gauge",
+    icon: "📊",
+    label: "Gauge / Ruler",
+    description: "Click canvas to place a numerical slider or custom list",
+    color: "#f3f4f6",
+  },
 ];
 
 function newQuestion() {
@@ -155,12 +169,196 @@ function newQuestion() {
   };
 }
 
+function parseOptions(optionsBlock) {
+  const lines = optionsBlock.split("\n").map(l => l.trim()).filter(Boolean);
+  const options = [];
+  for (const line of lines) {
+    const match = line.match(/^\s*([A-Z])\s*\.\s*(.*)$/i);
+    if (match) {
+      options.push({
+        letter: match[1].toUpperCase(),
+        text: match[2].trim()
+      });
+    }
+  }
+  return options;
+}
+
+function parseQuickPaste(text) {
+  let normalized = text.replace(/\r\n/g, "\n").trim();
+  
+  // Clean up leading/trailing separator lines
+  normalized = normalized.replace(/^\s*[-=_*]{3,}\s*(?:\n|$)/, "");
+  normalized = normalized.replace(/(?:\n|^)\s*[-=_*]{3,}\s*$/, "");
+  
+  // Split by separator lines
+  const rawSegments = normalized.split(/\n\s*[-=_*]{3,}\s*\n/);
+  const segments = rawSegments.map(s => s.trim()).filter(Boolean);
+  
+  const parsedQuestions = [];
+  
+  if (segments.length >= 2) {
+    for (let i = 0; i < segments.length; i += 2) {
+      const prompt = segments[i];
+      const optionsBlock = segments[i + 1] || "";
+      if (prompt && optionsBlock) {
+        const options = parseOptions(optionsBlock);
+        parsedQuestions.push({ prompt, options });
+      }
+    }
+  }
+  
+  if (parsedQuestions.length === 0) {
+    const lines = normalized.split("\n").map(l => l.trim());
+    let currentPromptLines = [];
+    let currentOptions = [];
+    for (let line of lines) {
+      if (/^\s*[-=_*]{3,}\s*$/.test(line)) {
+        if (currentPromptLines.length > 0 && currentOptions.length > 0) {
+          parsedQuestions.push({
+            prompt: currentPromptLines.join("\n").trim(),
+            options: currentOptions
+          });
+          currentPromptLines = [];
+          currentOptions = [];
+        }
+        continue;
+      }
+      const optionMatch = line.match(/^\s*([A-Z])\s*\.\s*(.*)$/i);
+      if (optionMatch) {
+        currentOptions.push({
+          letter: optionMatch[1].toUpperCase(),
+          text: optionMatch[2].trim()
+        });
+      } else if (line !== "") {
+        if (currentOptions.length > 0) {
+          parsedQuestions.push({
+            prompt: currentPromptLines.join("\n").trim(),
+            options: currentOptions
+          });
+          currentPromptLines = [line];
+          currentOptions = [];
+        } else {
+          currentPromptLines.push(line);
+        }
+      }
+    }
+    if (currentPromptLines.length > 0 && currentOptions.length > 0) {
+      parsedQuestions.push({
+        prompt: currentPromptLines.join("\n").trim(),
+        options: currentOptions
+      });
+    }
+  }
+  
+  return parsedQuestions;
+}
+
+function createQuestionFromParsed(parsed) {
+  const qId = randomUUID();
+  const elements = [];
+  
+  // Question prompt (TEXT_BLOCK)
+  elements.push({
+    id: `q-prompt-${randomUUID()}`,
+    type: "TEXT_BLOCK",
+    content: parsed.prompt,
+    x_ratio: 0.08,
+    y_ratio: 0.06,
+    w_ratio: 0.84,
+    h_ratio: 0.14,
+    isMovableByPlayer: false,
+    color: "#fef3c7",
+    fontSizeScale: 1.1,
+  });
+  
+  // Dynamic Option Layout coordinates calculation
+  const N = parsed.options.length;
+  const rows = Math.ceil(N / 2);
+  let h = 0.11;
+  let rawCoords = [];
+  
+  if (rows === 1) {
+    h = 0.14;
+    rawCoords = [
+      { x: 0.12, y: 0.45 },
+      { x: 0.56, y: 0.45 }
+    ];
+  } else if (rows === 2) {
+    h = 0.12;
+    rawCoords = [
+      { x: 0.12, y: 0.38 },
+      { x: 0.56, y: 0.38 },
+      { x: 0.12, y: 0.62 },
+      { x: 0.56, y: 0.62 }
+    ];
+  } else if (rows === 3) {
+    h = 0.09;
+    rawCoords = [
+      { x: 0.12, y: 0.36 },
+      { x: 0.56, y: 0.36 },
+      { x: 0.12, y: 0.52 },
+      { x: 0.56, y: 0.52 },
+      { x: 0.12, y: 0.68 },
+      { x: 0.56, y: 0.68 }
+    ];
+  } else {
+    h = 0.07;
+    for (let i = 0; i < N; i++) {
+      const r = Math.floor(i / 2);
+      const c = i % 2;
+      const y = 0.34 + r * 0.11;
+      rawCoords.push({ x: c === 0 ? 0.12 : 0.56, y });
+    }
+  }
+  
+  const defaultLetters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N"];
+  for (let i = 0; i < N; i++) {
+    const parsedOpt = parsed.options[i];
+    const letter = parsedOpt?.letter || defaultLetters[i] || String.fromCharCode(65 + i);
+    const text = parsedOpt?.text || "";
+    const content = `${letter}. ${text}`;
+    
+    // Center the last block if N is odd
+    let x = rawCoords[i]?.x ?? 0.12;
+    if (i === N - 1 && N % 2 === 1) {
+      x = 0.34;
+    }
+    const y = rawCoords[i]?.y ?? 0.38;
+    
+    elements.push({
+      id: `q-opt-${letter.toLowerCase()}-${randomUUID()}`,
+      type: "TEXT_BLOCK",
+      content: content,
+      x_ratio: x,
+      y_ratio: y,
+      w_ratio: 0.32,
+      h_ratio: h,
+      isMovableByPlayer: false,
+      color: "#ffd7ba",
+      fontSizeScale: rows >= 3 ? 0.75 : 0.85,
+    });
+  }
+  
+  return {
+    id: qId,
+    prompt: parsed.prompt,
+    note: "",
+    duration: 20,
+    canvasImage: "",
+    canvasImageFit: "contain",
+    zoomScale: 1.0,
+    panOffset: { x: 0, y: 0 },
+    elements,
+  };
+}
+
 // -----------------------------------------------------------------------------
 
 export default function CreatePage() {
   const router = useRouter();
 
-  const [title,            setTitle]            = useState("My Cute Trap Quiz");
+  const [title,            setTitle]            = useState("My brain KingDom Quiz");
   const [roundDurationSec, setRoundDurationSec] = useState(20);
   const [questions,        setQuestions]        = useState([newQuestion()]);
   const [selectedIdx,      setSelectedIdx]      = useState(0);
@@ -177,11 +375,43 @@ export default function CreatePage() {
   const [savedDrafts,      setSavedDrafts]      = useState([]);
   const [showHelp,         setShowHelp]         = useState(false);
 
+  const [showQuickPaste,   setShowQuickPaste]   = useState(false);
+  const [quickPasteText,   setQuickPasteText]   = useState("");
+  const [quickPasteError,  setQuickPasteError]  = useState("");
+
+  const [selectedShapeType,        setSelectedShapeType]        = useState("rect");
+  const [selectedShapeColor,       setSelectedShapeColor]       = useState("#7c3aed");
+  const [selectedShapeIsFilled,    setSelectedShapeIsFilled]    = useState(false);
+  const [selectedShapeStrokeWidth, setSelectedShapeStrokeWidth] = useState(3);
+
   const q = questions[selectedIdx];
 
   // -- Question array helpers ---------------------------------------------------
   function updateQ(patch) {
     setQuestions(prev => prev.map((item, i) => i === selectedIdx ? { ...item, ...patch } : item));
+  }
+
+  function handleImportQuestions(mode) {
+    if (!quickPasteText.trim()) return;
+    const parsed = parseQuickPaste(quickPasteText);
+    if (!parsed || parsed.length === 0) {
+      setQuickPasteError("Không tìm thấy câu hỏi hợp lệ trong văn bản đã dán. Vui lòng kiểm tra lại cấu trúc.");
+      return;
+    }
+    const newQList = parsed.map(p => createQuestionFromParsed(p));
+    if (mode === "overwrite") {
+      setQuestions(newQList);
+      setSelectedIdx(0);
+      setMsg(`⚡ Đã nhập & ghi đè ${newQList.length} câu hỏi mới.`);
+    } else {
+      const oldLen = questions.length;
+      setQuestions(prev => [...prev, ...newQList]);
+      setSelectedIdx(oldLen);
+      setMsg(`⚡ Đã thêm ${newQList.length} câu hỏi mới.`);
+    }
+    setShowQuickPaste(false);
+    setQuickPasteText("");
+    setQuickPasteError("");
   }
 
   function addQuestion() {
@@ -276,19 +506,7 @@ export default function CreatePage() {
     updateQ({ elements: newElements });
   }
 
-  function addGaugeBlock() {
-    if (q.elements.some(el => el.type === "GAUGE_BLOCK")) {
-      setMsg("?? This question already has a Gauge block.");
-      return;
-    }
-    updateQ({
-      elements: [...q.elements, {
-        id: randomUUID(),
-        type: "GAUGE_BLOCK",
-        min: 0, max: 100, correctMin: 30, correctMax: 40,
-      }],
-    });
-  }
+
 
   function onImageUpload(e) {
     const file = e.target.files?.[0];
@@ -381,6 +599,7 @@ export default function CreatePage() {
       : type === "FREEFORM_ZONE"      ? "🔷 Poly Zone"
       : type === "IMAGE_BLOCK"        ? "🖼️ Image"
       : type === "DRAWING_STROKE"     ? "🖌️ Stroke"
+      : type === "SHAPE_BLOCK"        ? "🔺 Shape"
       : type;
   }
 
@@ -477,6 +696,11 @@ export default function CreatePage() {
               <span style={{ fontSize: "0.72rem", fontWeight: "bold", opacity: 0.5, letterSpacing: "0.06em" }}>📋 QUESTIONS ({questions.length})</span>
               <button type="button" className="btn" style={{ padding: "2px 8px", fontSize: "0.75rem" }} onClick={addQuestion}>+ Add</button>
             </div>
+            <button type="button" className="btn secondary"
+              style={{ width: "100%", marginBottom: 8, padding: "6px 10px", fontSize: "0.82rem", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+              onClick={() => setShowQuickPaste(true)}>
+              ⚡ Nhập nhanh từ Template
+            </button>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {questions.map((item, idx) => (
                 <div key={item.id}
@@ -513,16 +737,14 @@ export default function CreatePage() {
           <section style={{ padding: "10px 12px", borderBottom: "2px solid #e5e0d8" }}>
             <div style={{ fontSize: "0.72rem", fontWeight: "bold", opacity: 0.5, marginBottom: 6, letterSpacing: "0.06em" }}>🧱 TOOLS</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4 }}>
-              {[...BLOCK_PALETTE, { mode: "__gauge__", icon: "📊", label: "Gauge", color: "#f3f4f6", description: "Add numerical slider trap" }].map(item => {
+              {BLOCK_PALETTE.map(item => {
                 const isActive = item.mode === "draw-target"
                   ? (canvasMode === "draw-target" || canvasMode === "draw-freeform")
                   : canvasMode === item.mode;
                 return (
                   <button key={item.mode} type="button" title={item.description}
                     onClick={() => {
-                      if (item.mode === "__gauge__") {
-                        addGaugeBlock();
-                      } else if (item.mode === "draw-target") {
+                      if (item.mode === "draw-target") {
                         setCanvasMode(zoneDrawType === "rectangle" ? "draw-target" : "draw-freeform");
                       } else {
                         setCanvasMode(item.mode);
@@ -600,6 +822,71 @@ export default function CreatePage() {
                     style={{ flex: 1, accentColor: brushColor }} />
                   <span style={{ fontSize: "0.78rem", minWidth: 26 }}>{brushWidth}px</span>
                 </label>
+              </div>
+            )}
+
+            {canvasMode === "place-shape" && (
+              <div style={{ marginTop: 8, padding: 8, background: "#e0f2fe", border: "2px solid #2f2a3c", borderRadius: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ fontSize: "0.85rem", fontWeight: "bold", fontFamily: "Short Stack, cursive" }}>
+                  🔺 Cấu hình Hình vẽ:
+                </span>
+                
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span style={{ fontSize: "0.78rem", opacity: 0.8 }}>Loại hình:</span>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4 }}>
+                    {[
+                      { type: "rect", label: "Vuông", icon: "⏹️" },
+                      { type: "circle", label: "Tròn", icon: "🟡" },
+                      { type: "triangle-iso", label: "▲ Cân", icon: "🔺" },
+                      { type: "triangle-right", label: "▲ Vuông", icon: "📐" },
+                      { type: "star", label: "Sao", icon: "⭐" },
+                      { type: "diamond", label: "Thoi", icon: "💎" },
+                      { type: "arrow", label: "Mũi tên", icon: "➡️" },
+                      { type: "heart", label: "Tim", icon: "❤️" },
+                      { type: "custom", label: "Tự vẽ", icon: "✏️" },
+                    ].map(sh => {
+                      const isSel = selectedShapeType === sh.type;
+                      return (
+                        <button key={sh.type} type="button"
+                          className={`btn ${isSel ? "" : "secondary"}`}
+                          style={{ padding: "4px 2px", fontSize: "0.75rem", display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}
+                          onClick={() => setSelectedShapeType(sh.type)}>
+                          <span style={{ fontSize: "1rem" }}>{sh.icon}</span>
+                          <span style={{ fontSize: "0.68rem" }}>{sh.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+                  <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: "0.82rem", cursor: "pointer" }}>
+                    <input type="checkbox" checked={selectedShapeIsFilled}
+                      onChange={e => setSelectedShapeIsFilled(e.target.checked)}
+                      style={{ cursor: "pointer" }} />
+                    <span style={{ fontWeight: "bold" }}>Tô màu (Fill)</span>
+                  </label>
+                </div>
+
+                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "0.82rem" }}>
+                  Màu sắc
+                  <input type="color" value={selectedShapeColor} onChange={e => setSelectedShapeColor(e.target.value)}
+                    style={{ width: 30, height: 22, border: "none", borderRadius: 4, cursor: "pointer", padding: 0 }} />
+                  <span style={{ fontFamily: "monospace", fontSize: "0.72rem", opacity: 0.7 }}>{selectedShapeColor}</span>
+                </label>
+
+                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "0.82rem" }}>
+                  Độ dày viền
+                  <input type="range" min={1} max={20} value={selectedShapeStrokeWidth} onChange={e => setSelectedShapeStrokeWidth(Number(e.target.value))}
+                    style={{ flex: 1, accentColor: selectedShapeColor }} />
+                  <span style={{ fontSize: "0.78rem", minWidth: 26 }}>{selectedShapeStrokeWidth}px</span>
+                </label>
+
+                <div style={{ fontSize: "0.7rem", opacity: 0.7, fontStyle: "italic", background: "#ffffff80", padding: "4px 6px", borderRadius: 6 }}>
+                  {selectedShapeType === "custom" 
+                    ? "👉 Nhấp và rê chuột trên canvas để tự vẽ hình tự do theo ý muốn." 
+                    : "👉 Nhấp và kéo chuột theo 1 hướng để vẽ hình với kích thước tùy ý."}
+                </div>
               </div>
             )}
 
@@ -769,16 +1056,185 @@ export default function CreatePage() {
                         </div>
                       )}
 
-                      {el.type === "GAUGE_BLOCK" && (
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                          {[["Min","min",el.min],["Max","max",el.max],["✅Min","correctMin",el.correctMin],["✅Max","correctMax",el.correctMax]].map(([lbl,key,val]) => (
-                            <label key={key} style={{ fontSize: "0.75rem" }}>
-                              {lbl}
-                              <input className="input" type="number" value={val}
-                                style={{ padding: "3px 6px", fontSize: "0.82rem" }}
-                                onChange={e => patchElement(el.id, { [key]: Number(e.target.value) })} />
+                      {el.type === "SHAPE_BLOCK" && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                            <span style={{ fontSize: "0.78rem", opacity: 0.7 }}>Loại hình:</span>
+                            <select className="input" value={el.shapeType ?? "rect"}
+                              onChange={e => {
+                                const newType = e.target.value;
+                                const patch = { shapeType: newType };
+                                
+                                // Conversion from Custom to Preset
+                                if (el.shapeType === "custom" && newType !== "custom") {
+                                  if (el.points_ratio && el.points_ratio.length > 0) {
+                                    const xs = el.points_ratio.map(p => p.x);
+                                    const ys = el.points_ratio.map(p => p.y);
+                                    const bx = Math.min(...xs);
+                                    const by = Math.min(...ys);
+                                    patch.x_ratio = bx;
+                                    patch.y_ratio = by;
+                                    patch.w_ratio = Math.max(...xs) - bx;
+                                    patch.h_ratio = Math.max(...ys) - by;
+                                  } else {
+                                    patch.x_ratio = 0.4;
+                                    patch.y_ratio = 0.4;
+                                    patch.w_ratio = 0.2;
+                                    patch.h_ratio = 0.2;
+                                  }
+                                }
+                                
+                                // Conversion from Preset to Custom
+                                if (el.shapeType !== "custom" && newType === "custom") {
+                                  const bx = el.x_ratio ?? 0.4;
+                                  const by = el.y_ratio ?? 0.4;
+                                  const bw = el.w_ratio ?? 0.2;
+                                  const bh = el.h_ratio ?? 0.2;
+                                  patch.points_ratio = [
+                                    { x: bx, y: by },
+                                    { x: bx + bw, y: by },
+                                    { x: bx + bw, y: by + bh },
+                                    { x: bx, y: by + bh }
+                                  ];
+                                }
+                                
+                                patchElement(el.id, patch);
+                              }}
+                              style={{ flex: 1, padding: "3px 6px", fontSize: "0.82rem", borderRadius: 6 }}>
+                              <option value="rect">Vuông / Chữ nhật</option>
+                              <option value="circle">Tròn / Bầu dục</option>
+                              <option value="triangle-iso">Tam giác cân</option>
+                              <option value="triangle-right">Tam giác vuông</option>
+                              <option value="star">Ngôi sao</option>
+                              <option value="diamond">Kim cương</option>
+                              <option value="arrow">Mũi tên</option>
+                              <option value="heart">Trái tim</option>
+                              <option value="custom">Tự vẽ (Custom)</option>
+                            </select>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <label style={{ display: "flex", gap: 5, alignItems: "center", fontSize: "0.78rem" }}>
+                              <input type="checkbox" checked={el.isFilled ?? false}
+                                onChange={e => patchElement(el.id, { isFilled: e.target.checked })} />
+                              <span style={{ opacity: 0.7 }}>Tô kín (Fill)</span>
                             </label>
-                          ))}
+                          </div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <span style={{ fontSize: "0.78rem", opacity: 0.7 }}>Màu sắc:</span>
+                            <input type="color" value={el.color ?? "#7c3aed"}
+                              onChange={e => patchElement(el.id, { color: e.target.value })}
+                              style={{ width: 28, height: 22, border: "none", padding: 0, cursor: "pointer", borderRadius: 4 }} />
+                          </div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <span style={{ fontSize: "0.78rem", opacity: 0.7 }}>Độ dày viền:</span>
+                            <input type="number" min={1} max={20} className="input"
+                              style={{ width: 50, padding: "3px 6px", fontSize: "0.82rem" }}
+                              value={el.strokeWidth ?? 3}
+                              onChange={e => patchElement(el.id, { strokeWidth: Number(e.target.value) })} />
+                            <span style={{ fontSize: "0.78rem", opacity: 0.6 }}>px</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {el.type === "GAUGE_BLOCK" && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+                          <label style={{ fontSize: "0.75rem", display: "block" }}>
+                            Tiêu đề / Nhãn:
+                            <input className="input" type="text" value={el.title ?? ""}
+                              style={{ padding: "3px 6px", fontSize: "0.82rem", width: "100%", boxSizing: "border-box" }}
+                              onChange={e => patchElement(el.id, { title: e.target.value })} />
+                          </label>
+
+                          <label style={{ fontSize: "0.75rem", display: "block" }}>
+                            Loại thước đo:
+                            <select className="input" value={el.labels ? "custom" : "numbers"}
+                              style={{ padding: "3px 6px", fontSize: "0.82rem", width: "100%" }}
+                              onChange={e => {
+                                if (e.target.value === "custom") {
+                                  patchElement(el.id, { labels: "A, B, C, D", correctValue: "A", currentValue: "A" });
+                                } else {
+                                  patchElement(el.id, { labels: "", min: 0, max: 100, step: 1, correctMin: 40, correctMax: 60, correctValue: "50", currentValue: "50" });
+                                }
+                              }}
+                            >
+                              <option value="numbers">🔢 Numeric Range (Số)</option>
+                              <option value="custom">🔤 Custom List (Danh sách chữ/kí tự)</option>
+                            </select>
+                          </label>
+
+                          {!el.labels ? (
+                            <>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
+                                <label style={{ fontSize: "0.75rem" }}>
+                                  Min:
+                                  <input className="input" type="number" step="any" value={el.min ?? 0}
+                                    style={{ padding: "3px 6px", fontSize: "0.82rem", width: "100%" }}
+                                    onChange={e => patchElement(el.id, { min: Number(e.target.value) })} />
+                                </label>
+                                <label style={{ fontSize: "0.75rem" }}>
+                                  Max:
+                                  <input className="input" type="number" step="any" value={el.max ?? 100}
+                                    style={{ padding: "3px 6px", fontSize: "0.82rem", width: "100%" }}
+                                    onChange={e => patchElement(el.id, { max: Number(e.target.value) })} />
+                                </label>
+                                <label style={{ fontSize: "0.75rem" }}>
+                                  Step:
+                                  <input className="input" type="number" step="any" value={el.step ?? 1}
+                                    style={{ padding: "3px 6px", fontSize: "0.82rem", width: "100%" }}
+                                    onChange={e => patchElement(el.id, { step: Number(e.target.value) })} />
+                                </label>
+                              </div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                                <label style={{ fontSize: "0.75rem" }}>
+                                  ✅ Min:
+                                  <input className="input" type="number" step="any" value={el.correctMin ?? 40}
+                                    style={{ padding: "3px 6px", fontSize: "0.82rem", width: "100%" }}
+                                    onChange={e => patchElement(el.id, { correctMin: Number(e.target.value) })} />
+                                </label>
+                                <label style={{ fontSize: "0.75rem" }}>
+                                  ✅ Max:
+                                  <input className="input" type="number" step="any" value={el.correctMax ?? 60}
+                                    style={{ padding: "3px 6px", fontSize: "0.82rem", width: "100%" }}
+                                    onChange={e => patchElement(el.id, { correctMax: Number(e.target.value) })} />
+                                </label>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <label style={{ fontSize: "0.75rem", display: "block" }}>
+                                Các mục cách nhau bằng dấu phẩy:
+                                <input className="input" type="text" value={el.labels ?? ""}
+                                  style={{ padding: "3px 6px", fontSize: "0.82rem", width: "100%", boxSizing: "border-box" }}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    const ticks = val.split(",").map(s => s.trim()).filter(Boolean);
+                                    patchElement(el.id, {
+                                      labels: val,
+                                      correctValue: ticks.includes(el.correctValue) ? el.correctValue : (ticks[0] || ""),
+                                      currentValue: ticks.includes(el.currentValue) ? el.currentValue : (ticks[0] || "")
+                                    });
+                                  }} />
+                              </label>
+                              <label style={{ fontSize: "0.75rem", display: "block" }}>
+                                Đáp án đúng:
+                                <select className="input" value={el.correctValue ?? ""}
+                                  style={{ padding: "3px 6px", fontSize: "0.82rem", width: "100%" }}
+                                  onChange={e => patchElement(el.id, { correctValue: e.target.value })}
+                                >
+                                  {el.labels.split(",").map(s => s.trim()).filter(Boolean).map(tk => (
+                                    <option key={tk} value={tk}>{tk}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            </>
+                          )}
+
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
+                            <span style={{ fontSize: "0.78rem", opacity: 0.7 }}>Màu sắc Slider:</span>
+                            <input type="color" value={el.color ?? "#7c3aed"}
+                              onChange={e => patchElement(el.id, { color: e.target.value })}
+                              style={{ width: 28, height: 22, border: "none", padding: 0, cursor: "pointer", borderRadius: 4 }} />
+                          </div>
                         </div>
                       )}
 
@@ -829,6 +1285,7 @@ export default function CreatePage() {
                 {canvasMode === "draw-brush"    && " — Hold & drag to paint"}
                 {canvasMode === "place-text"    && " — Click to drop Text Block"}
                 {canvasMode === "place-answer"  && " — Click to drop Answer Block"}
+                {canvasMode === "place-gauge"   && " — Click to drop Gauge / Ruler"}
               </span>
             </div>
 
@@ -887,6 +1344,10 @@ export default function CreatePage() {
               brushWidth={brushWidth}
               brushMode={brushMode}
               defaultZoneRole={defaultZoneRole}
+              selectedShapeType={selectedShapeType}
+              selectedShapeColor={selectedShapeColor}
+              selectedShapeIsFilled={selectedShapeIsFilled}
+              selectedShapeStrokeWidth={selectedShapeStrokeWidth}
               onElementsChange={elements => updateQ({ elements })}
               onZoomPanChange={({ zoomScale, panOffset }) => updateQ({ zoomScale, panOffset })}
             />
@@ -894,6 +1355,97 @@ export default function CreatePage() {
         </section>
 
       </div>
+
+      {showQuickPaste && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 10000,
+          background: "rgba(30, 20, 50, 0.4)", backdropFilter: "blur(8px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 16
+        }}>
+          <div style={{
+            background: "#fffaf0", border: "3px solid #2f2a3c", borderRadius: 24,
+            width: "100%", maxWidth: 640, padding: 24, display: "flex", flexDirection: "column",
+            gap: 16, boxShadow: "8px 8px 0 rgba(0,0,0,0.15)", position: "relative"
+          }}>
+            <h3 style={{ fontFamily: "Itim, cursive", margin: 0, fontSize: "1.5rem", color: "var(--ink)" }}>
+              ⚡ Nhập nhanh câu hỏi từ Template
+            </h3>
+            
+            <p style={{ margin: 0, fontSize: "0.88rem", opacity: 0.75, lineHeight: 1.4 }}>
+              Dán nội dung câu hỏi trắc nghiệm của bạn theo cấu trúc bên dưới. Hệ thống sẽ tự động tạo các text block câu hỏi và đáp án trên Canvas.
+            </p>
+            
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: "bold", opacity: 0.6 }}>NỘI DUNG TẠO CÂU HỎI:</span>
+              <button type="button" className="btn secondary" style={{ padding: "2px 8px", fontSize: "0.72rem" }}
+                onClick={() => setQuickPasteText(
+`---------------
+Câu hỏi 1: Thủ đô của Việt Nam là gì?
+---------------
+A. Hải Phòng
+B. Đà Nẵng
+C. Hà Nội
+D. TP. Hồ Chí Minh
+----------------
+Câu hỏi 2: Đâu là các hành tinh khí khổng lồ trong Hệ Mặt Trời?
+---------------
+A. Sao Thủy
+B. Sao Kim
+C. Sao Mộc
+D. Sao Thổ
+E. Sao Thiên Vương
+F. Sao Hải Vương
+----------------
+Câu hỏi 3: Trái Đất có hình cầu, đúng hay sai?
+---------------
+A. Đúng
+B. Sai
+----------------`
+                )}>Tải cấu trúc mẫu (Load Template)</button>
+            </div>
+            
+            <textarea
+              className="input"
+              style={{
+                width: "100%", height: 260, fontFamily: "monospace", fontSize: "0.85rem",
+                padding: 12, borderRadius: 12, border: "2px solid #2f2a3c",
+                background: "#ffffffc0", resize: "vertical"
+              }}
+              placeholder={`-------------------\nCâu hỏi của bạn\n-------------------\nA. Đáp án A\nB. Đáp án B\nC. Đáp án C\nD. Đáp án D\nE. Đáp án E (Hỗ trợ số lượng đáp án tùy ý từ A-Z)\n------------------`}
+              value={quickPasteText}
+              onChange={e => {
+                setQuickPasteText(e.target.value);
+                setQuickPasteError("");
+              }}
+            />
+            
+            {quickPasteError && (
+              <div style={{ color: "#ef4444", fontSize: "0.82rem", fontWeight: "bold" }}>
+                ⚠️ {quickPasteError}
+              </div>
+            )}
+            
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+              <button type="button" className="btn secondary" onClick={() => { setShowQuickPaste(false); setQuickPasteError(""); }}>
+                Hủy
+              </button>
+              
+              <button type="button" className="btn"
+                onClick={() => handleImportQuestions("append")}
+                disabled={!quickPasteText.trim()}>
+                Thêm tiếp vào sau
+              </button>
+              
+              <button type="button" className="btn warn"
+                onClick={() => handleImportQuestions("overwrite")}
+                disabled={!quickPasteText.trim()}>
+                Nhập & Ghi đè
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

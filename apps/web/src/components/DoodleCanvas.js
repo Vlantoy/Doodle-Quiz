@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import rough from "roughjs";
 
 function randomUUID() {
@@ -84,6 +84,101 @@ function ResizeHandles({ onHandleDown, active }) {
   ));
 }
 
+// Helper to compute star points in a rect
+function getStarPoints(x, y, w, h) {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const spikes = 5;
+  const outerRadius = Math.min(w, h) / 2;
+  const innerRadius = outerRadius * 0.4;
+  const rot = Math.PI / 2 * 3;
+  let angle = rot;
+  const step = Math.PI / spikes;
+  const pts = [];
+  for (let i = 0; i < spikes * 2; i++) {
+    const r = (i % 2 === 0) ? outerRadius : innerRadius;
+    pts.push([
+      cx + Math.cos(angle) * r,
+      cy + Math.sin(angle) * r
+    ]);
+    angle += step;
+  }
+  return pts;
+}
+
+// Helper to compute heart points in a rect
+function getHeartPoints(bx, by, bw, bh) {
+  const pts = [];
+  const steps = 40;
+  for (let i = 0; i < steps; i++) {
+    const t = (i / steps) * Math.PI * 2;
+    const x_raw = 16 * Math.pow(Math.sin(t), 3);
+    const y_raw = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+    const x_norm = (x_raw + 16) / 32;
+    const y_norm = (y_raw + 12) / 29;
+    pts.push([
+      bx + x_norm * bw,
+      by + y_norm * bh
+    ]);
+  }
+  return pts;
+}
+
+function renderShapeHelper(svg, rc, shapeType, x, y, w, h, stroke, strokeWidth, fill, fillStyle) {
+  if (shapeType === "rect") {
+    svg.appendChild(rc.rectangle(x, y, w, h, {
+      roughness: 1.5, stroke, strokeWidth, fill, fillStyle,
+    }));
+  } else if (shapeType === "circle") {
+    svg.appendChild(rc.ellipse(x + w / 2, y + h / 2, w, h, {
+      roughness: 1.5, stroke, strokeWidth, fill, fillStyle,
+    }));
+  } else if (shapeType === "triangle" || shapeType === "triangle-iso") {
+    const p1 = [x + w / 2, y];
+    const p2 = [x, y + h];
+    const p3 = [x + w, y + h];
+    svg.appendChild(rc.polygon([p1, p2, p3], {
+      roughness: 1.5, stroke, strokeWidth, fill, fillStyle,
+    }));
+  } else if (shapeType === "triangle-right") {
+    const p1 = [x, y];
+    const p2 = [x, y + h];
+    const p3 = [x + w, y + h];
+    svg.appendChild(rc.polygon([p1, p2, p3], {
+      roughness: 1.5, stroke, strokeWidth, fill, fillStyle,
+    }));
+  } else if (shapeType === "star") {
+    const pts = getStarPoints(x, y, w, h);
+    svg.appendChild(rc.polygon(pts, {
+      roughness: 1.5, stroke, strokeWidth, fill, fillStyle,
+    }));
+  } else if (shapeType === "diamond") {
+    const p1 = [x + w / 2, y];
+    const p2 = [x + w, y + h / 2];
+    const p3 = [x + w / 2, y + h];
+    const p4 = [x, y + h / 2];
+    svg.appendChild(rc.polygon([p1, p2, p3, p4], {
+      roughness: 1.5, stroke, strokeWidth, fill, fillStyle,
+    }));
+  } else if (shapeType === "arrow") {
+    const p1 = [x, y + h * 0.35];
+    const p2 = [x + w * 0.6, y + h * 0.35];
+    const p3 = [x + w * 0.6, y + h * 0.15];
+    const p4 = [x + w, y + h * 0.5];
+    const p5 = [x + w * 0.6, y + h * 0.85];
+    const p6 = [x + w * 0.6, y + h * 0.65];
+    const p7 = [x, y + h * 0.65];
+    svg.appendChild(rc.polygon([p1, p2, p3, p4, p5, p6, p7], {
+      roughness: 1.5, stroke, strokeWidth, fill, fillStyle,
+    }));
+  } else if (shapeType === "heart") {
+    const pts = getHeartPoints(x, y, w, h);
+    svg.appendChild(rc.polygon(pts, {
+      roughness: 1.5, stroke, strokeWidth, fill, fillStyle,
+    }));
+  }
+}
+
 // Compute axis-aligned bounding box from points_ratio array
 function computeBBox(pts) {
   const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
@@ -96,6 +191,477 @@ function resizePoints(pts, old, next) {
     x: old.bw > 0 ? next.bx + (p.x - old.bx) / old.bw * next.bw : p.x,
     y: old.bh > 0 ? next.by + (p.y - old.by) / old.bh * next.bh : p.y,
   }));
+}
+
+function HandDrawnBackground({ canvasWidth, elColor, isAnswer, isMovable, isSelected }) {
+  const svgRef = useRef(null);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.innerHTML = "";
+
+    const parent = svg.parentElement;
+    if (!parent) return;
+    const rect = parent.getBoundingClientRect();
+    const w = rect.width || 100;
+    const h = rect.height || 50;
+
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+
+    const rc = rough.svg(svg);
+    const strokeColor = isSelected ? "#3b82f6" : (isAnswer ? "#7c3aed" : "#2f2a3c");
+    const fillColor = elColor || (isAnswer ? (isMovable ? "#c8e6ff" : "#ddd6fe") : "#ffd7ba");
+
+    const node = rc.rectangle(2.5, 2.5, w - 5, h - 5, {
+      roughness: 1.5,
+      stroke: strokeColor,
+      strokeWidth: isSelected ? 3.5 : 2.5,
+      fill: fillColor,
+      fillStyle: "solid",
+    });
+
+    svg.appendChild(node);
+  }, [canvasWidth, elColor, isAnswer, isMovable, isSelected]);
+
+  return (
+    <svg
+      ref={svgRef}
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        zIndex: 1,
+        overflow: "visible",
+      }}
+    />
+  );
+}
+
+function getDecimalPlaces(num) {
+  const str = String(num);
+  const dotIdx = str.indexOf(".");
+  return dotIdx === -1 ? 0 : str.length - dotIdx - 1;
+}
+
+function GaugeWidget({ el, isCreator, creatorMode, isSelected, canvasWidth, revealAnswers, onValueChange }) {
+  const trackRef = useRef(null);
+  const svgRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [size, setSize] = useState({ width: 200, height: 40 });
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        setSize({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height
+        });
+      }
+    });
+    observer.observe(track);
+    return () => observer.disconnect();
+  }, []);
+
+  const tickLabels = useMemo(() => {
+    return el.labels
+      ? el.labels.split(",").map(s => s.trim()).filter(Boolean)
+      : [];
+  }, [el.labels]);
+
+  const minVal = tickLabels.length > 0 ? 0 : (el.min ?? 0);
+  const maxVal = tickLabels.length > 0 ? tickLabels.length - 1 : (el.max ?? 100);
+  const step = tickLabels.length > 0 ? 1 : (el.step ?? 1);
+
+  let currentValue = el.currentValue;
+  if (tickLabels.length > 0) {
+    const valStr = String(currentValue ?? "");
+    if (!tickLabels.includes(valStr)) {
+      currentValue = tickLabels[0] || "";
+    } else {
+      currentValue = valStr;
+    }
+  } else {
+    let parsed = Number(currentValue);
+    if (isNaN(parsed) || !isFinite(parsed)) {
+      parsed = Number(el.min ?? 0);
+    }
+    currentValue = parsed;
+  }
+
+  // Format the value to show trailing zeros corresponding to the step decimals input
+  let displayValue = currentValue;
+  if (tickLabels.length === 0 && typeof currentValue === "number") {
+    const decimals = getDecimalPlaces(step);
+    displayValue = currentValue.toFixed(decimals);
+  }
+
+  // Calculate handle position percentage
+  let pct = 0;
+  if (tickLabels.length > 0) {
+    const idx = tickLabels.indexOf(String(currentValue));
+    const safeIdx = idx === -1 ? 0 : idx;
+    pct = tickLabels.length > 1 ? (safeIdx / (tickLabels.length - 1)) * 100 : 0;
+  } else {
+    const range = maxVal - minVal;
+    pct = range > 0 ? ((currentValue - minVal) / range) * 100 : 0;
+  }
+  if (isNaN(pct) || !isFinite(pct)) pct = 0;
+  pct = Math.max(0, Math.min(100, pct));
+
+  // Calculate correct indicator position
+  let showCorrect = isCreator || revealAnswers;
+  let correctPct = 0;
+  let correctPctEnd = 0;
+  let correctValText = "";
+  const correctMin = typeof el.correctMin === "number" ? el.correctMin : (Number(el.correctValue) || el.min || 0);
+  const correctMax = typeof el.correctMax === "number" ? el.correctMax : (Number(el.correctValue) || el.max || 0);
+
+  if (showCorrect) {
+    if (tickLabels.length > 0) {
+      const cVal = el.correctValue ?? tickLabels[0];
+      correctValText = cVal;
+      const idx = tickLabels.indexOf(String(cVal));
+      const safeCorrectIdx = idx === -1 ? 0 : idx;
+      correctPct = tickLabels.length > 1 ? (safeCorrectIdx / (tickLabels.length - 1)) * 100 : 0;
+    } else {
+      correctValText = correctMin === correctMax ? `${correctMin}` : `${correctMin}-${correctMax}`;
+      const range = maxVal - minVal;
+      if (range > 0) {
+        correctPct = ((correctMin - minVal) / range) * 100;
+        correctPctEnd = ((correctMax - minVal) / range) * 100;
+      }
+    }
+  }
+  if (isNaN(correctPct) || !isFinite(correctPct)) correctPct = 0;
+  correctPct = Math.max(0, Math.min(100, correctPct));
+  if (isNaN(correctPctEnd) || !isFinite(correctPctEnd)) correctPctEnd = 0;
+  correctPctEnd = Math.max(0, Math.min(100, correctPctEnd));
+
+  const handlePointerDown = (e) => {
+    e.stopPropagation();
+    if (isCreator && creatorMode !== "pan") return;
+    
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setIsDragging(true);
+    updateValue(e.clientX);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!isDragging) return;
+    e.stopPropagation();
+    updateValue(e.clientX);
+  };
+
+  const handlePointerUp = (e) => {
+    if (!isDragging) return;
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const formatMiddleVal = (val) => {
+    const decimals = Math.max(getDecimalPlaces(minVal), getDecimalPlaces(maxVal), getDecimalPlaces(step), 2);
+    return Number(Number(val).toFixed(decimals));
+  };
+
+  const updateValue = (clientX) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+
+    if (tickLabels.length > 0) {
+      const idx = Math.round(frac * (tickLabels.length - 1));
+      onValueChange(tickLabels[idx]);
+    } else {
+      let val = minVal + frac * (maxVal - minVal);
+      val = Math.round(val / step) * step;
+      // Round to precision to avoid floating point errors like 0.30000000004
+      const decimals = getDecimalPlaces(step);
+      val = Number(val.toFixed(decimals));
+      val = Math.max(minVal, Math.min(maxVal, val));
+      onValueChange(val);
+    }
+  };
+
+  const activeColor = el.color || "#7c3aed";
+
+  const ticks = useMemo(() => {
+    const t = [];
+    if (tickLabels.length > 0) {
+      for (let i = 0; i < tickLabels.length; i++) {
+        t.push({
+          pct: tickLabels.length > 1 ? (i / (tickLabels.length - 1)) * 100 : 0,
+          isMajor: true
+        });
+      }
+    } else {
+      for (let i = 0; i <= 20; i++) {
+        t.push({
+          pct: i * 5,
+          isMajor: i % 2 === 0
+        });
+      }
+    }
+    return t;
+  }, [tickLabels]);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.innerHTML = "";
+
+    const { width: w, height: h } = size;
+    if (w <= 0 || h <= 0) return;
+
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    const rc = rough.svg(svg);
+
+    const padding = 3.5;
+    const rx = padding;
+    const ry = padding;
+    const rw = w - padding * 2;
+    const rh = h - padding * 2;
+
+    const strokeColor = "#2f2a3c";
+    const fillColor = "#fcd34d"; // beautiful cartoon yellow wood color
+
+    // Draw the main ruler background with roughjs
+    const bgNode = rc.rectangle(rx, ry, rw, rh, {
+      roughness: 1.2,
+      stroke: strokeColor,
+      strokeWidth: 3,
+      fill: fillColor,
+      fillStyle: "solid",
+    });
+    svg.appendChild(bgNode);
+
+    // Soft organic wood grain or cartoon highlight lines
+    const grainColor = "rgba(0, 0, 0, 0.08)";
+    if (rw > 60) {
+      const g1 = rc.line(rx + 15, ry + rh * 0.2, rx + 35, ry + rh * 0.2, { stroke: grainColor, strokeWidth: 2, roughness: 1.5 });
+      const g2 = rc.line(rx + 10, ry + rh * 0.5, rx + 25, ry + rh * 0.5, { stroke: grainColor, strokeWidth: 2, roughness: 1.5 });
+      const g3 = rc.line(rx + 18, ry + rh * 0.8, rx + 30, ry + rh * 0.8, { stroke: grainColor, strokeWidth: 2, roughness: 1.5 });
+      svg.appendChild(g1);
+      svg.appendChild(g2);
+      svg.appendChild(g3);
+
+      const g4 = rc.line(rx + rw - 35, ry + rh * 0.2, rx + rw - 15, ry + rh * 0.2, { stroke: grainColor, strokeWidth: 2, roughness: 1.5 });
+      const g5 = rc.line(rx + rw - 25, ry + rh * 0.5, rx + rw - 10, ry + rh * 0.5, { stroke: grainColor, strokeWidth: 2, roughness: 1.5 });
+      const g6 = rc.line(rx + rw - 30, ry + rh * 0.8, rx + rw - 18, ry + rh * 0.8, { stroke: grainColor, strokeWidth: 2, roughness: 1.5 });
+      svg.appendChild(g4);
+      svg.appendChild(g5);
+      svg.appendChild(g6);
+    }
+
+    // Draw sketchy tick lines
+    ticks.forEach((t) => {
+      const x = rx + (t.pct / 100) * rw;
+      const tickHeight = t.isMajor ? rh * 0.35 : rh * 0.2;
+      const tickY1 = ry;
+      const tickY2 = ry + tickHeight;
+
+      const tickNode = rc.line(x, tickY1, x, tickY2, {
+        stroke: strokeColor,
+        strokeWidth: t.isMajor ? 2.5 : 1.5,
+        roughness: 0.8,
+      });
+      svg.appendChild(tickNode);
+    });
+
+  }, [size, ticks]);
+
+  return (
+    <div style={{
+      position: "relative",
+      width: "100%",
+      height: "100%",
+      userSelect: "none",
+      fontFamily: "Patrick Hand, cursive",
+    }}>
+
+      {/* Ruler Track Body Container */}
+      <div 
+        ref={trackRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 2,
+          overflow: "visible",
+          background: "transparent",
+        }}
+      >
+        {/* Dynamic hand-drawn SVG ruler layer */}
+        <svg
+          ref={svgRef}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+            zIndex: 1,
+            overflow: "visible",
+            filter: "drop-shadow(3px 3px 0px rgba(0,0,0,0.12))"
+          }}
+        />
+
+        {/* Target Answer Range Highlight (Correct Range) */}
+        {showCorrect && !el.labels && correctMin !== correctMax && (
+          <div style={{
+            position: "absolute",
+            left: `${correctPct}%`,
+            width: `${Math.max(2, correctPctEnd - correctPct)}%`,
+            top: 4,
+            bottom: 4,
+            background: "rgba(34, 197, 94, 0.22)",
+            borderLeft: "2.5px dashed #15803d",
+            borderRight: "2.5px dashed #15803d",
+            boxSizing: "border-box",
+            zIndex: 3,
+            pointerEvents: "none"
+          }} />
+        )}
+
+        {/* Target Answer Point Highlight (Correct Tick or Precise Number) */}
+        {showCorrect && (el.labels || (!el.labels && correctMin === correctMax)) && (
+          <div style={{
+            position: "absolute",
+            left: `${correctPct}%`,
+            top: 4,
+            bottom: 4,
+            width: 4,
+            background: "#22c55e",
+            borderLeft: "1.5px solid #15803d",
+            borderRight: "1.5px solid #15803d",
+            transform: "translateX(-50%)",
+            zIndex: 3,
+            pointerEvents: "none"
+          }} />
+        )}
+
+        {/* Drag Handle sitting on the top edge of the ruler */}
+        <div 
+          style={{
+            position: "absolute",
+            left: `${pct}%`,
+            top: 0, 
+            transform: "translate(-50%, -34px)", // align bottom of pointer pin with top of ruler
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            cursor: (isCreator && creatorMode !== "pan") ? "default" : "grab",
+            zIndex: 10,
+            touchAction: "none"
+          }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        >
+          <svg
+            width="36"
+            height="46"
+            viewBox="0 0 36 46"
+            style={{
+              overflow: "visible",
+              filter: "drop-shadow(2px 3px 0px rgba(0,0,0,0.15))"
+            }}
+          >
+            {/* Main cartoon balloon pin shape */}
+            <path
+              d="M 18,2 C 26.8,2 34,9.2 34,18 C 34,24.5 30,28 26,30 L 18,42 L 10,30 C 6,28 2,24.5 2,18 C 2,9.2 9.2,2 18,2 Z"
+              fill={activeColor}
+              stroke="#2f2a3c"
+              strokeWidth="3.5"
+              strokeLinejoin="round"
+            />
+            {/* Glossy shine highlight */}
+            <ellipse cx="12" cy="12" rx="4" ry="2" fill="white" opacity="0.6" transform="rotate(-30, 12, 12)" />
+            {/* Center pin-hole decoration */}
+            <circle cx="18" cy="18" r="3" fill="#2f2a3c" />
+          </svg>
+        </div>
+
+        {/* Pop-up bubble showing current value (floats above the knob) */}
+        <div style={{
+          position: "absolute",
+          left: `${pct}%`,
+          bottom: "calc(100% + 40px)", // floats above the balloon pointer handle
+          transform: "translateX(-50%)",
+          background: activeColor,
+          color: "#fff",
+          padding: "5px 12px",
+          borderRadius: "16px 12px 16px 10px / 12px 16px 10px 14px", // sketchy cartoon shape
+          fontSize: `${Math.max(13, Math.min(19, canvasWidth * 0.02))}px`,
+          fontWeight: "bold",
+          border: "3px solid #2f2a3c",
+          boxShadow: "3px 3px 0px rgba(0,0,0,0.15)",
+          whiteSpace: "nowrap",
+          zIndex: 15,
+          pointerEvents: "none",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center"
+        }}>
+          {displayValue}
+          {/* Tooltip pointer arrow pointing down */}
+          <svg
+            width="16"
+            height="10"
+            viewBox="0 0 16 10"
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: "50%",
+              transform: "translateX(-50%) translateY(-2px)",
+              pointerEvents: "none",
+            }}
+          >
+            {/* Arrow background with border */}
+            <path d="M 0,0 L 8,8 L 16,0" fill={activeColor} stroke="#2f2a3c" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+            {/* Mask line to cover the bubble bottom border */}
+            <line x1="1.5" y1="0" x2="14.5" y2="0" stroke={activeColor} strokeWidth="4" />
+          </svg>
+        </div>
+      </div>
+
+      {/* Ticks / Values at the bottom of the ruler block */}
+      <div style={{
+        position: "absolute",
+        top: "calc(100% + 4px)",
+        left: 0,
+        right: 0,
+        display: "flex",
+        justifyContent: "space-between",
+        fontSize: `${Math.max(10, Math.min(16, canvasWidth * 0.018))}px`,
+        fontWeight: "bold",
+        opacity: 0.9,
+        padding: "0 10px",
+        boxSizing: "border-box",
+        color: "#2f2a3c",
+        textShadow: "1px 1px 0px #fff, -1px -1px 0px #fff, 1px -1px 0px #fff, -1px 1px 0px #fff", // white outline for readability
+        pointerEvents: "none"
+      }}>
+        {tickLabels.length > 0 ? (
+          <>
+            <span>{tickLabels[0]}</span>
+            {tickLabels.length > 2 && <span>{tickLabels[Math.floor(tickLabels.length / 2)]}</span>}
+            <span>{tickLabels[tickLabels.length - 1]}</span>
+          </>
+        ) : (
+          <>
+            <span>{minVal}</span>
+            <span>{formatMiddleVal((minVal + maxVal) / 2)}</span>
+            <span>{maxVal}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /*
@@ -123,6 +689,10 @@ export default function DoodleCanvas({
   onZoomPanChange,
   revealAnswers = false,
   playerClicks = [],
+  selectedShapeType = "rect",
+  selectedShapeColor = "#7c3aed",
+  selectedShapeIsFilled = false,
+  selectedShapeStrokeWidth = 3,
 }) {
   const containerRef = useRef(null);
   const svgRef       = useRef(null);
@@ -154,10 +724,9 @@ export default function DoodleCanvas({
     }
   }, [gaugeValue]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Draw-target mode: store raw pixel coords relative to container on mousedown,
-  // then normalise to ratios on mouseup (spec §4 end-to-end target loop)
+  // Draw-target mode: store canvas-space ratios on mousedown
   const [drawingRect, setDrawingRect] = useState(null); // live preview (ratios)
-  const drawStartPx  = useRef(null); // { x, y } raw pixels relative to container
+  const drawStartRatio = useRef(null); // { x, y } canvas-space ratios
 
   // Freeform-zone drawing: ref for stale-closure-safe point accumulation + state to trigger SVG redraw
   const drawingPolylineRef = useRef(null); // [{ x, y }] canvas-space ratios, null when inactive
@@ -173,6 +742,12 @@ export default function DoodleCanvas({
   // Brush drawing: accumulate stroke points stale-closure-safe
   const currentBrushRef  = useRef(null);       // { color, width, pts: [{x,y}] } | null
   const [brushPreview, setBrushPreview] = useState(null);
+
+  // Shape drawing states & refs
+  const shapeDrawStartRef = useRef(null);
+  const [drawingShape, setDrawingShape] = useState(null);
+  const currentCustomShapeRef = useRef(null);
+  const [customShapePreview, setCustomShapePreview] = useState(null);
 
   // Last canvas pointer-down position (canvas-space ratios) — used by paste handler
   const lastClickRef    = useRef({ rx: 0.5, ry: 0.5 });
@@ -227,12 +802,27 @@ export default function DoodleCanvas({
     setLiveElements(question?.elements ? [...question.elements] : []);
     doSetScale(question?.zoomScale ?? 1);
     doSetPan(question?.panOffset ?? { x: 0, y: 0 });
-    setGaugeValue(50);
+
+    // Find GAUGE_BLOCK to initialize its value
+    const gEl = question?.elements?.find(el => el.type === "GAUGE_BLOCK");
+    if (gEl) {
+      const ticks = gEl.labels ? gEl.labels.split(",").map(s => s.trim()).filter(Boolean) : [];
+      let initVal = gEl.currentValue;
+      if (ticks.length > 0) {
+        if (!ticks.includes(initVal)) initVal = ticks[0];
+      } else {
+        initVal = Number(initVal ?? gEl.min ?? 0);
+      }
+      setGaugeValue(initVal);
+    } else {
+      setGaugeValue(50);
+    }
+
     setDrawingRect(null);
     setSelectedElemId(null);
     editingTextValueRef.current = "";
     setEditingTextId(null);
-  }, [question?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [question]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep onElemChangeRef current so paste handler never captures a stale prop
   useEffect(() => { onElemChangeRef.current = onElementsChange; }, [onElementsChange]);
@@ -253,7 +843,7 @@ export default function DoodleCanvas({
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     const rect = containerRef.current?.getBoundingClientRect();
-    const hasPts = el.type === "FREEFORM_ZONE" || el.type === "DRAWING_STROKE";
+    const hasPts = el.type === "FREEFORM_ZONE" || el.type === "DRAWING_STROKE" || (el.type === "SHAPE_BLOCK" && el.shapeType === "custom");
     resizeDragRef.current = {
       handle,
       id: el.id,
@@ -362,6 +952,33 @@ export default function DoodleCanvas({
     const rc = rough.svg(svg);
     svg.innerHTML = "";
 
+    // SHAPE_BLOCK: render hand-drawn shapes
+    liveElements.filter(el => el.type === "SHAPE_BLOCK").forEach(el => {
+      const stroke = el.color ?? "#2f2a3c";
+      const strokeWidth = el.strokeWidth ?? 3;
+      const fill = el.isFilled ? (el.color ?? "#7c3aed") : "none";
+      const fillStyle = el.isFilled ? "solid" : "none";
+
+      if (el.shapeType === "custom") {
+        if (el.points_ratio?.length) {
+          const pts = el.points_ratio.map(p => [C_W * p.x, C_H * p.y]);
+          svg.appendChild(rc.polygon(pts, {
+            roughness: 1.5,
+            stroke,
+            strokeWidth,
+            fill,
+            fillStyle,
+          }));
+        }
+      } else {
+        const x = C_W * el.x_ratio;
+        const y = C_H * el.y_ratio;
+        const w = Math.max(C_W * el.w_ratio, 4);
+        const h = Math.max(C_H * el.h_ratio, 4);
+        renderShapeHelper(svg, rc, el.shapeType || "rect", x, y, w, h, stroke, strokeWidth, fill, fillStyle);
+      }
+    });
+
     // DRAWING_STROKE: always visible to everyone (canvas decoration)
     liveElements.filter(el => el.type === "DRAWING_STROKE").forEach(el => {
       if (!el.points_ratio?.length) return;
@@ -465,12 +1082,33 @@ export default function DoodleCanvas({
           }));
         }
 
+        if (drawingShape) {
+          const x = C_W * drawingShape.x_ratio;
+          const y = C_H * drawingShape.y_ratio;
+          const w = Math.max(C_W * drawingShape.w_ratio, 4);
+          const h = Math.max(C_H * drawingShape.h_ratio, 4);
+          const stroke = selectedShapeColor;
+          const strokeWidth = selectedShapeStrokeWidth;
+          const fill = selectedShapeIsFilled ? selectedShapeColor : "none";
+          const fillStyle = selectedShapeIsFilled ? "solid" : "none";
+          renderShapeHelper(svg, rc, drawingShape.shapeType, x, y, w, h, stroke, strokeWidth, fill, fillStyle);
+        }
+
+        if (customShapePreview && customShapePreview.length > 1) {
+          const pts = customShapePreview.map(p => [C_W * p.x, C_H * p.y]);
+          svg.appendChild(rc.linearPath(pts, {
+            roughness: 1,
+            stroke: selectedShapeColor,
+            strokeWidth: selectedShapeStrokeWidth,
+          }));
+        }
+
         // Selection highlight: blue dashed rect around selected SVG-only element
         if (selectedElemId) {
           const sel = liveElements.find(el => el.id === selectedElemId);
-          if (sel && (sel.type === "PRECISION_TARGET" || sel.type === "FREEFORM_ZONE" || sel.type === "DRAWING_STROKE")) {
+          if (sel && (sel.type === "PRECISION_TARGET" || sel.type === "FREEFORM_ZONE" || sel.type === "DRAWING_STROKE" || sel.type === "SHAPE_BLOCK")) {
             let bx, by, bw, bh;
-            if (sel.type === "PRECISION_TARGET") {
+            if (sel.type === "PRECISION_TARGET" || (sel.type === "SHAPE_BLOCK" && sel.shapeType !== "custom")) {
               bx = C_W * sel.x_ratio; by = C_H * sel.y_ratio;
               bw = C_W * sel.w_ratio; bh = C_H * sel.h_ratio;
             } else {
@@ -531,7 +1169,7 @@ export default function DoodleCanvas({
         svg.appendChild(g);
       });
     }
-  }, [question?.id, isCreator, revealAnswers, targetJson, drawingRect, drawingPolyline, brushPreview, selectedElemId, playerClicks]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [question, isCreator, revealAnswers, targetJson, drawingRect, drawingPolyline, brushPreview, selectedElemId, playerClicks, drawingShape, customShapePreview, selectedShapeColor, selectedShapeIsFilled, selectedShapeStrokeWidth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Scroll-wheel zoom ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -604,15 +1242,10 @@ export default function DoodleCanvas({
       return;
     }
 
-    // §4 Target-draw loop: capture raw mousedown pixel relative to container
+    // §4 Target-draw loop: capture canvas-space ratios on mousedown
     if (isCreator && creatorMode === "draw-target" && !disabled) {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (rect) {
-        drawStartPx.current = {
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        };
-      }
+      const { rx, ry } = getHitCoords(e.clientX, e.clientY);
+      drawStartRatio.current = { x: rx, y: ry };
       return;
     }
 
@@ -621,6 +1254,25 @@ export default function DoodleCanvas({
       const { rx, ry } = getHitCoords(e.clientX, e.clientY);
       drawingPolylineRef.current = [{ x: rx, y: ry }];
       setDrawingPolyline([{ x: rx, y: ry }]);
+      return;
+    }
+
+    // Shape placing/drawing: start dragging preset shape or custom shape points
+    if (isCreator && creatorMode === "place-shape" && !disabled) {
+      const { rx, ry } = getHitCoords(e.clientX, e.clientY);
+      if (selectedShapeType === "custom") {
+        currentCustomShapeRef.current = [{ x: rx, y: ry }];
+        setCustomShapePreview([{ x: rx, y: ry }]);
+      } else {
+        shapeDrawStartRef.current = { rx, ry };
+        setDrawingShape({
+          shapeType: selectedShapeType,
+          x_ratio: rx,
+          y_ratio: ry,
+          w_ratio: 0,
+          h_ratio: 0
+        });
+      }
       return;
     }
 
@@ -655,22 +1307,47 @@ export default function DoodleCanvas({
       return;
     }
 
-    // §4 Draw-target live preview: keep in raw-px space, convert to ratios only for display
-    if (isCreator && creatorMode === "draw-target" && drawStartPx.current) {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const curPx = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-      const s     = drawStartPx.current;
-      // Convert raw px preview → ratios for SVG overlay (purely visual, not stored yet)
-      const minX = Math.min(s.x, curPx.x);
-      const minY = Math.min(s.y, curPx.y);
+    // §4 Draw-target live preview
+    if (isCreator && creatorMode === "draw-target" && drawStartRatio.current) {
+      const { rx, ry } = getHitCoords(e.clientX, e.clientY);
+      const s = drawStartRatio.current;
+      const minX = Math.min(s.x, rx);
+      const minY = Math.min(s.y, ry);
       setDrawingRect({
-        x_ratio: minX / rect.width,
-        y_ratio: minY / rect.height,
-        w_ratio: Math.abs(curPx.x - s.x) / rect.width,
-        h_ratio: Math.abs(curPx.y - s.y) / rect.height,
+        x_ratio: minX,
+        y_ratio: minY,
+        w_ratio: Math.abs(rx - s.x),
+        h_ratio: Math.abs(ry - s.y),
       });
       return;
+    }
+
+    // Shape placing/drawing: handle dragging for preset shape preview or custom shape
+    if (isCreator && creatorMode === "place-shape") {
+      const { rx, ry } = getHitCoords(e.clientX, e.clientY);
+      if (selectedShapeType === "custom" && currentCustomShapeRef.current) {
+        const pts = currentCustomShapeRef.current;
+        const last = pts[pts.length - 1];
+        if (Math.hypot(rx - last.x, ry - last.y) > 0.004) {
+          pts.push({ x: rx, y: ry });
+          setCustomShapePreview([...pts]);
+        }
+        return;
+      } else if (shapeDrawStartRef.current) {
+        const start = shapeDrawStartRef.current;
+        const x_ratio = Math.min(start.rx, rx);
+        const y_ratio = Math.min(start.ry, ry);
+        const w_ratio = Math.abs(rx - start.rx);
+        const h_ratio = Math.abs(ry - start.ry);
+        setDrawingShape({
+          shapeType: selectedShapeType,
+          x_ratio,
+          y_ratio,
+          w_ratio,
+          h_ratio
+        });
+        return;
+      }
     }
 
     if (panStartRef.current) {
@@ -731,56 +1408,114 @@ export default function DoodleCanvas({
     }
 
     // ── §4 End-to-end target loop: normalise bounding box at mouseup ────────
-    // Capture mouseup raw px, compute MinX/MinY/Width/Height, THEN divide by
-    // container size to get final stored ratios. No intermediate pixel storage.
-    if (isCreator && creatorMode === "draw-target" && drawStartPx.current) {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (rect) {
-        const s    = drawStartPx.current;
-        const ex   = e.clientX - rect.left;
-        const ey   = e.clientY - rect.top;
-        const minX = Math.min(s.x, ex);
-        const minY = Math.min(s.y, ey);
-        const w    = Math.abs(ex - s.x);
-        const h    = Math.abs(ey - s.y);
-        // §2 ratio conversion: divide by live container dimensions (not hardcoded C_W/C_H)
-        const x_ratio = minX / rect.width;
-        const y_ratio = minY / rect.height;
-        const w_ratio = w / rect.width;
-        const h_ratio = h / rect.height;
-        if (w_ratio > 0.01 && h_ratio > 0.01) {
-          // §1 Z-index: append to END of slideElements array (renders on top)
-          commitElements([...liveElements, {
-            id: randomUUID(),
-            type: "PRECISION_TARGET",
-            x_ratio, y_ratio, w_ratio, h_ratio,
-            isHidden: true,
-          }]);
-        }
+    // Capture mouseup canvas-space ratios, compute MinX/MinY/Width/Height.
+    if (isCreator && creatorMode === "draw-target" && drawStartRatio.current) {
+      const { rx, ry } = getHitCoords(e.clientX, e.clientY);
+      const s = drawStartRatio.current;
+      const minX = Math.min(s.x, rx);
+      const minY = Math.min(s.y, ry);
+      const w = Math.abs(rx - s.x);
+      const h = Math.abs(ry - s.y);
+      if (w > 0.01 && h > 0.01) {
+        commitElements([...liveElements, {
+          id: randomUUID(),
+          type: "PRECISION_TARGET",
+          x_ratio: minX,
+          y_ratio: minY,
+          w_ratio: w,
+          h_ratio: h,
+          isHidden: true,
+        }]);
       }
-      drawStartPx.current = null;
+      drawStartRatio.current = null;
       setDrawingRect(null);
       return;
     }
 
-    // ── Place TEXT_BLOCK or ANSWER_BLOCK ────────────────────────────────────
-    if (isCreator && (creatorMode === "place-text" || creatorMode === "place-answer") && !hasMoved.current) {
+    // Shape placing/drawing: commit shape drawing on release
+    if (isCreator && creatorMode === "place-shape") {
+      if (selectedShapeType === "custom" && currentCustomShapeRef.current) {
+        const pts = currentCustomShapeRef.current;
+        currentCustomShapeRef.current = null;
+        setCustomShapePreview(null);
+        if (pts.length >= 3) {
+          commitElements([...liveElements, {
+            id: randomUUID(),
+            type: "SHAPE_BLOCK",
+            shapeType: "custom",
+            color: selectedShapeColor,
+            isFilled: selectedShapeIsFilled,
+            strokeWidth: selectedShapeStrokeWidth,
+            points_ratio: pts,
+          }]);
+        }
+        return;
+      } else if (shapeDrawStartRef.current) {
+        const start = shapeDrawStartRef.current;
+        shapeDrawStartRef.current = null;
+        setDrawingShape(null);
+        const { rx, ry } = getHitCoords(e.clientX, e.clientY);
+        const x_ratio = Math.min(start.rx, rx);
+        const y_ratio = Math.min(start.ry, ry);
+        const w_ratio = Math.abs(rx - start.rx);
+        const h_ratio = Math.abs(ry - start.ry);
+        if (w_ratio > 0.01 && h_ratio > 0.01) {
+          commitElements([...liveElements, {
+            id: randomUUID(),
+            type: "SHAPE_BLOCK",
+            shapeType: selectedShapeType,
+            color: selectedShapeColor,
+            isFilled: selectedShapeIsFilled,
+            strokeWidth: selectedShapeStrokeWidth,
+            x_ratio,
+            y_ratio,
+            w_ratio,
+            h_ratio,
+          }]);
+        }
+        return;
+      }
+    }
+
+    // ── Place TEXT_BLOCK, ANSWER_BLOCK, or GAUGE_BLOCK ───────────────────────
+    if (isCreator && (creatorMode === "place-text" || creatorMode === "place-answer" || creatorMode === "place-gauge") && !hasMoved.current) {
       // §3 inverse matrix: undo pan + scale before ratio conversion
       const { rx, ry } = getHitCoords(e.clientX, e.clientY);
-      const isAnswer   = creatorMode === "place-answer";
       const s = scaleRef.current;
-      // §2 ratio conversion + §1 append-to-end
-      commitElements([...liveElements, {
-        id: randomUUID(),
-        type: isAnswer ? "ANSWER_BLOCK" : "TEXT_BLOCK",
-        content: isAnswer ? "Move me! 🙈" : "Text Block",
-        x_ratio: rx - (0.11 / s),
-        y_ratio: ry - (0.05 / s),
-        w_ratio: 0.22 / s,
-        h_ratio: 0.10 / s,
-        fontSizeScale: 1.0,
-        isMovableByPlayer: isAnswer,
-      }]);
+      
+      if (creatorMode === "place-gauge") {
+        commitElements([...liveElements, {
+          id: randomUUID(),
+          type: "GAUGE_BLOCK",
+          x_ratio: rx - (0.25 / s),
+          y_ratio: ry - (0.09 / s),
+          w_ratio: 0.50 / s,
+          h_ratio: 0.18 / s,
+          title: "Kéo thước đo (Slider)",
+          min: 0,
+          max: 100,
+          step: 1,
+          correctMin: 40,
+          correctMax: 60,
+          labels: "",
+          correctValue: "50",
+          currentValue: "50",
+          color: "#7c3aed",
+        }]);
+      } else {
+        const isAnswer = creatorMode === "place-answer";
+        commitElements([...liveElements, {
+          id: randomUUID(),
+          type: isAnswer ? "ANSWER_BLOCK" : "TEXT_BLOCK",
+          content: isAnswer ? "Move me! 🙈" : "Text Block",
+          x_ratio: rx - (0.11 / s),
+          y_ratio: ry - (0.05 / s),
+          w_ratio: 0.22 / s,
+          h_ratio: 0.10 / s,
+          fontSizeScale: 1.0,
+          isMovableByPlayer: isAnswer,
+        }]);
+      }
       panStartRef.current = null;
       return;
     }
@@ -791,6 +1526,12 @@ export default function DoodleCanvas({
         panStartRef.current = null;
         hasMoved.current = false;
         return;
+      }
+      const hasGauge = liveElements.some(el => el.type === "GAUGE_BLOCK");
+      if (hasGauge) {
+        panStartRef.current = null;
+        hasMoved.current = false;
+        return; // Ignore canvas clicks for players if a slider is present!
       }
       const { rx, ry } = getHitCoords(e.clientX, e.clientY);
       const gaugeEl    = liveElements.find(el => el.type === "GAUGE_BLOCK");
@@ -1105,13 +1846,15 @@ export default function DoodleCanvas({
     : isCreator && creatorMode === "draw-brush"    ? "crosshair"
     : isCreator && creatorMode === "place-text"    ? "text"
     : isCreator && creatorMode === "place-answer"  ? "cell"
+    : isCreator && creatorMode === "place-shape"   ? "crosshair"
+    : isCreator && creatorMode === "place-gauge"   ? "pointer"
     : "grab";
 
   const gaugeEl = liveElements.find(el => el.type === "GAUGE_BLOCK");
   // §1 Z-index array: render in forward order (index 0 = bottom, last = top)
   // TEXT_BLOCK, ANSWER_BLOCK, IMAGE_BLOCK rendered as DOM; DRAWING_STROKE in SVG; zones SVG-only
   const domBlocks = liveElements.filter(el =>
-    el.type === "TEXT_BLOCK" || el.type === "ANSWER_BLOCK" || el.type === "IMAGE_BLOCK"
+    el.type === "TEXT_BLOCK" || el.type === "ANSWER_BLOCK" || el.type === "IMAGE_BLOCK" || el.type === "GAUGE_BLOCK"
   );
 
   return (
@@ -1124,8 +1867,8 @@ export default function DoodleCanvas({
         outline: "none",
         width: "100%",
         maxWidth: isCreator
-          ? "min(100%, calc(100vh - 200px))"
-          : (gaugeEl ? "min(100%, calc(100vh - 110px))" : "min(100%, calc(100vh - 55px))"),
+          ? "min(100%, calc((16 / 9) * (100vh - 200px)))"
+          : (gaugeEl ? "min(100%, calc((16 / 9) * (100vh - 110px)))" : "min(100%, calc((16 / 9) * (100vh - 55px)))"),
         margin: "0 auto",
         minHeight: "unset",
       }}
@@ -1136,7 +1879,7 @@ export default function DoodleCanvas({
         style={{
           position: "relative",
           width: "100%",
-          aspectRatio: "1 / 1",
+          aspectRatio: "16 / 9",
           overflow: "hidden",
           background: "transparent",
           outline: "none",
@@ -1156,9 +1899,8 @@ export default function DoodleCanvas({
         <div style={{
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
           transformOrigin: "0 0",
-          position: "relative",
-          width: "100%",
-          height: "100%",
+          position: "absolute",
+          inset: 0,
           cursor,
           overflow: "visible",
         }}>
@@ -1205,15 +1947,10 @@ export default function DoodleCanvas({
                 ? "2px dashed #3b82f6"
                 : el.type === "IMAGE_BLOCK"
                 ? (isCreator ? "2px dashed #94a3b8" : "none")
-                : `2.5px solid ${el.type === "ANSWER_BLOCK" ? "#7c3aed" : "#2f2a3c"}`,
+                : "none",
               boxShadow: isSelected ? "0 0 0 3px #3b82f640" : undefined,
-              borderRadius: el.type === "IMAGE_BLOCK" ? 4 : 10,
-              background: el.type === "IMAGE_BLOCK" ? "transparent"
-                : el.color
-                ? el.color
-                : el.type === "ANSWER_BLOCK"
-                ? (el.isMovableByPlayer ? "#c8e6ff" : "#ddd6fe")
-                : "#ffd7ba",
+              borderRadius: el.type === "IMAGE_BLOCK" ? 4 : 0,
+              background: "transparent",
               padding: 0,
               fontFamily: "Patrick Hand, cursive",
               containerType: "inline-size",
@@ -1227,11 +1964,11 @@ export default function DoodleCanvas({
                 ? "auto"
                 : "none",
               boxSizing: "border-box",
-              overflow: (isCreator && creatorMode === "pan") ? "visible" : "hidden",
+              overflow: (el.type === "GAUGE_BLOCK" || (isCreator && creatorMode === "pan")) ? "visible" : "hidden",
               display: "flex", alignItems: "center", justifyContent: "center",
               textAlign: "center",
-              // IMAGE_BLOCK uses fixed height; text blocks use minHeight to allow wrapping
-              ...(el.type === "IMAGE_BLOCK"
+              // IMAGE_BLOCK and GAUGE_BLOCK use fixed height; text blocks use minHeight to allow wrapping
+              ...((el.type === "IMAGE_BLOCK" || el.type === "GAUGE_BLOCK")
                 ? { height: `${el.h_ratio * 100}%` }
                 : { minHeight: `${el.h_ratio * 100}%` }),
             }}
@@ -1276,9 +2013,17 @@ export default function DoodleCanvas({
                 }}
               >×</button>
             )}
-            {/* Resize handles (8-point) — always visible in pan mode, active when selected */}
             {isCreator && creatorMode === "pan" && (
               <ResizeHandles active={isSelected} onHandleDown={(e, h) => onResizeHandlePointerDown(e, h, el)} />
+            )}
+            {(el.type === "TEXT_BLOCK" || el.type === "ANSWER_BLOCK") && (
+              <HandDrawnBackground
+                canvasWidth={canvasWidth}
+                elColor={el.color}
+                isAnswer={el.type === "ANSWER_BLOCK"}
+                isMovable={el.isMovableByPlayer}
+                isSelected={isSelected}
+              />
             )}
             {el.type === "IMAGE_BLOCK" ? (
               <img
@@ -1286,6 +2031,23 @@ export default function DoodleCanvas({
                 alt=""
                 draggable={false}
                 style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }}
+              />
+            ) : el.type === "GAUGE_BLOCK" ? (
+              <GaugeWidget
+                el={el}
+                isCreator={isCreator}
+                creatorMode={creatorMode}
+                isSelected={isSelected}
+                canvasWidth={canvasWidth}
+                revealAnswers={revealAnswers}
+                onValueChange={(val) => {
+                  setLiveElements(prev => {
+                    const n = prev.map(x => x.id !== el.id ? x : { ...x, currentValue: String(val) });
+                    onElemChangeRef.current?.(n);
+                    return n;
+                  });
+                  setGaugeValue(val);
+                }}
               />
             ) : editingTextId === el.id ? (
               /* Inline textarea edit */
@@ -1304,6 +2066,7 @@ export default function DoodleCanvas({
                   width: `${90 / scaleFactor}%`,
                   transform: `translate(-50%, -50%) scale(${scaleFactor})`,
                   transformOrigin: "center center",
+                  zIndex: 2,
                   border: "none",
                   outline: "none",
                   resize: "none",
@@ -1343,6 +2106,7 @@ export default function DoodleCanvas({
                   width: `${90 / scaleFactor}%`,
                   transform: `translate(-50%, -50%) scale(${scaleFactor})`,
                   transformOrigin: "center center",
+                  zIndex: 2,
                   fontSize: "40px",
                   lineHeight: "1.2",
                   textAlign: "center",
@@ -1371,10 +2135,10 @@ export default function DoodleCanvas({
 
         {/* ── Transparent hit-areas for SVG-only elements (creator select mode) ── */}
         {isCreator && liveElements
-          .filter(el => el.type === "PRECISION_TARGET" || el.type === "FREEFORM_ZONE" || el.type === "DRAWING_STROKE")
+          .filter(el => el.type === "PRECISION_TARGET" || el.type === "FREEFORM_ZONE" || el.type === "DRAWING_STROKE" || el.type === "SHAPE_BLOCK")
           .map(el => {
             let bx, by, bw, bh;
-            if (el.type === "PRECISION_TARGET") {
+            if (el.type === "PRECISION_TARGET" || (el.type === "SHAPE_BLOCK" && el.shapeType !== "custom")) {
               bx = el.x_ratio; by = el.y_ratio; bw = el.w_ratio; bh = el.h_ratio;
             } else {
               const pts = el.points_ratio ?? [];
@@ -1494,43 +2258,7 @@ export default function DoodleCanvas({
         </div>
       </div>
 
-      {/* GAUGE_BLOCK: outside transform layer so it stays at fixed bottom */}
-      {gaugeEl && (
-        <div style={{ padding: "8px 14px", borderTop: "2px solid #2f2a3c", background: "#fffdf6" }}>
-          <div style={{
-            marginBottom: 4, fontFamily: "Patrick Hand, cursive",
-            display: "flex", gap: 10, alignItems: "center",
-          }}>
-            <span>Gauge: <strong>{gaugeValue}</strong></span>
-            {(isCreator || revealAnswers) && (
-              <span style={{ opacity: 0.6, fontSize: "0.82rem" }}>
-                ✅ Correct range: {gaugeEl.correctMin}–{gaugeEl.correctMax}
-              </span>
-            )}
-          </div>
-          {/* Ruler-style slider */}
-          <div style={{ position: "relative" }}>
-            <input
-              type="range"
-              style={{ width: "100%", accentColor: "#7c3aed" }}
-              min={gaugeEl.min ?? 0}
-              max={gaugeEl.max ?? 100}
-              value={gaugeValue}
-              disabled={disabled}
-              onChange={e => setGaugeValue(Number(e.target.value))}
-            />
-            <div style={{
-              display: "flex", justifyContent: "space-between",
-              fontSize: "0.7rem", opacity: 0.4,
-              fontFamily: "Patrick Hand, cursive", marginTop: -2,
-            }}>
-              <span>{gaugeEl.min ?? 0}</span>
-              <span>{Math.round(((gaugeEl.min ?? 0) + (gaugeEl.max ?? 100)) / 2)}</span>
-              <span>{gaugeEl.max ?? 100}</span>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Controls bar */}
       <div style={{
