@@ -7,6 +7,7 @@ import { hostRoom } from "lib/api";
 import { getOrCreateUser, saveUser, saveDraft, listDrafts, saveRoomState, randomUUID } from "lib/storage";
 import DoodleCanvas from "components/DoodleCanvas";
 import JSZip from "jszip";
+import { PDFDocument } from "pdf-lib";
 
 // -- Quick-Start Template Presets (spec �5) -------------------------------------
 // Static IDs only � no crypto.randomUUID() at module level (SSR safe)
@@ -356,6 +357,17 @@ async function callGeminiAPIWithRetry(prompt, fileData, maxRetries = 5) {
   }
 }
 
+function uint8ArrayToBase64(uint8) {
+  let binary = "";
+  const len = uint8.byteLength;
+  const chunkSize = 8192;
+  for (let i = 0; i < len; i += chunkSize) {
+    const chunk = uint8.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, chunk);
+  }
+  return window.btoa(binary);
+}
+
 async function extractTextFromPptx(file) {
   const zip = await JSZip.loadAsync(file);
   let fullText = "";
@@ -650,7 +662,7 @@ export default function CreatePage() {
   const [quickPasteError,  setQuickPasteError]  = useState("");
 
   const [showAiGenerator,  setShowAiGenerator]  = useState(false);
-  const [aiFile,           setAiFile]           = useState(null);
+  const [aiFiles,          setAiFiles]          = useState([]);
   const [aiCount,          setAiCount]          = useState(3);
   const [aiDifficulty,     setAiDifficulty]     = useState("Phân bố chuẩn (30% dễ, 50% TB, 20% khó)");
   const [aiCognitive,      setAiCognitive]      = useState("Đầy đủ các cấp độ");
@@ -694,59 +706,151 @@ export default function CreatePage() {
   }
 
   const handleGenerateQuestions = async () => {
-    if (!aiFile) {
-      setAiError("Vui lòng chọn 1 file tài liệu (PDF, PPTX, hoặc TXT/MD).");
+    if (!aiFiles || aiFiles.length === 0) {
+      setAiError("Vui lòng chọn ít nhất 1 file tài liệu (PDF, PPTX, hoặc TXT/MD).");
       return;
     }
     setAiLoading(true);
     setAiError("");
-    setAiLog("Đang đọc file tài liệu...");
     
     try {
-      let fileData = null;
-      if (aiFile.type === "application/pdf") {
-        const base64 = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const dataUrl = reader.result;
-            const base64Str = dataUrl.split(",")[1];
-            resolve(base64Str);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(aiFile);
-        });
-        fileData = { mimeType: "application/pdf", base64 };
-      } else if (aiFile.name.endsWith(".pptx")) {
-        const text = await extractTextFromPptx(aiFile);
-        if (!text.trim()) {
-          throw new Error("Không thể trích xuất văn bản từ file Slide này. Có thể slide không có chữ hoặc file bị hỏng.");
+      const chunks = [];
+      
+      for (const file of aiFiles) {
+        setAiLog(`Đang đọc file tài liệu: ${file.name}...`);
+        
+        if (file.type === "application/pdf") {
+          const fileBytes = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(new Uint8Array(reader.result));
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+          });
+          
+          const pdfDoc = await PDFDocument.load(fileBytes);
+          const pageCount = pdfDoc.getPageCount();
+          
+          if (pageCount <= 1000) {
+            const base64 = uint8ArrayToBase64(fileBytes);
+            chunks.push({
+              type: "pdf",
+              name: file.name,
+              base64,
+              pageCount
+            });
+          } else {
+            setAiLog(`Tệp [${file.name}] có ${pageCount} trang, vượt quá giới hạn 1000 trang của Gemini. Đang tự động tách nhỏ tệp tin...`);
+            const chunkSize = 500;
+            let startPage = 0;
+            let partIndex = 1;
+            while (startPage < pageCount) {
+              const endPage = Math.min(startPage + chunkSize, pageCount);
+              setAiLog(`Đang tách [${file.name}] - Phần ${partIndex} (trang ${startPage + 1} đến ${endPage})...`);
+              
+              const subDoc = await PDFDocument.create();
+              const pagesRange = Array.from({ length: endPage - startPage }, (_, idx) => startPage + idx);
+              const copiedPages = await subDoc.copyPages(pdfDoc, pagesRange);
+              for (const page of copiedPages) {
+                subDoc.addPage(page);
+              }
+              
+              const subBytes = await subDoc.save();
+              const base64 = uint8ArrayToBase64(subBytes);
+              chunks.push({
+                type: "pdf",
+                name: `${file.name} (Phần ${partIndex})`,
+                base64,
+                pageCount: endPage - startPage
+              });
+              
+              startPage = endPage;
+              partIndex++;
+            }
+          }
+        } else if (file.name.endsWith(".pptx")) {
+          const text = await extractTextFromPptx(file);
+          if (!text.trim()) {
+            throw new Error(`Không thể trích xuất văn bản từ slide: ${file.name}`);
+          }
+          chunks.push({
+            type: "text",
+            name: file.name,
+            text
+          });
+        } else if (file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".md")) {
+          const text = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsText(file);
+          });
+          chunks.push({
+            type: "text",
+            name: file.name,
+            text
+          });
+        } else {
+          throw new Error(`Định dạng file [${file.name}] không được hỗ trợ. Vui lòng tải lên PDF, PPTX, TXT hoặc MD.`);
         }
-        fileData = { mimeType: "text/plain", text };
-      } else if (aiFile.type === "text/plain" || aiFile.name.endsWith(".txt") || aiFile.name.endsWith(".md")) {
-        const text = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsText(aiFile);
+      }
+      
+      // Merge all text chunks to minimize API calls
+      const textInputs = chunks.filter(c => c.type === "text");
+      const pdfInputs = chunks.filter(c => c.type === "pdf");
+      const processedChunks = [];
+      
+      if (textInputs.length > 0) {
+        const mergedText = textInputs.map(t => `[TÀI LIỆU: ${t.name}]\n${t.text}`).join("\n\n---\n\n");
+        processedChunks.push({
+          type: "text",
+          name: "Các tài liệu văn bản tổng hợp",
+          text: mergedText
         });
-        fileData = { mimeType: "text/plain", text };
-      } else {
-        throw new Error("Định dạng file không được hỗ trợ. Vui lòng tải lên PDF, PPTX, TXT hoặc MD.");
+      }
+      processedChunks.push(...pdfInputs);
+      
+      if (processedChunks.length === 0) {
+        throw new Error("Không tìm thấy dữ liệu khả dụng từ các tệp tin đã tải lên.");
       }
       
-      setAiLog("Đang chuẩn bị câu hỏi và liên hệ chuyên gia AI...");
-      const prompt = makePrompt(aiCount, aiDifficulty, aiCognitive);
-      
-      setAiLog("AI đang phân tích tài liệu và biên soạn câu hỏi... (Quá trình này có thể mất vài giây)");
-      const aiResponse = await callGeminiAPIWithRetry(prompt, fileData);
-      
-      setAiLog("Đang xử lý kết quả trả về từ AI...");
-      const parsedList = parseAiGeneratedQuestions(aiResponse);
-      if (parsedList.length === 0) {
-        throw new Error("Không thể phân tích định dạng câu hỏi do AI trả về. Thử lại hoặc chọn tài liệu khác.");
+      // Distribute question counts across processed chunks
+      const numChunks = processedChunks.length;
+      const distributedCounts = [];
+      const baseCount = Math.floor(aiCount / numChunks);
+      let remainder = aiCount % numChunks;
+      for (let i = 0; i < numChunks; i++) {
+        const countForThis = baseCount + (i < remainder ? 1 : 0);
+        distributedCounts.push(countForThis);
       }
       
-      const newQuestions = parsedList.map(p => createQuestionFromParsed(p));
+      const allParsedQuestions = [];
+      
+      for (let i = 0; i < numChunks; i++) {
+        const chunk = processedChunks[i];
+        const count = distributedCounts[i];
+        if (count <= 0) continue;
+        
+        setAiLog(`Đang gửi yêu cầu tạo ${count} câu hỏi từ [${chunk.name}]...`);
+        
+        let fileData = null;
+        if (chunk.type === "pdf") {
+          fileData = { mimeType: "application/pdf", base64: chunk.base64 };
+        } else {
+          fileData = { mimeType: "text/plain", text: chunk.text };
+        }
+        
+        const prompt = makePrompt(count, aiDifficulty, aiCognitive);
+        const aiResponse = await callGeminiAPIWithRetry(prompt, fileData);
+        
+        const parsed = parseAiGeneratedQuestions(aiResponse);
+        allParsedQuestions.push(...parsed);
+      }
+      
+      if (allParsedQuestions.length === 0) {
+        throw new Error("Không thể phân tích bất kỳ câu hỏi nào do AI trả về. Thử lại hoặc chọn tài liệu khác.");
+      }
+      
+      const newQuestions = allParsedQuestions.map(p => createQuestionFromParsed(p));
       const oldLen = questions.length;
       
       setQuestions(prev => {
@@ -765,7 +869,7 @@ export default function CreatePage() {
       
       setMsg(`🤖 Đã tạo thành công ${newQuestions.length} câu hỏi từ tài liệu bằng AI.`);
       setShowAiGenerator(false);
-      setAiFile(null);
+      setAiFiles([]);
     } catch (err) {
       console.error("[AI Generator Error]", err);
       setAiError(err.message || "Đã xảy ra lỗi không xác định.");
@@ -1835,22 +1939,38 @@ B. Sai
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <label style={{ fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: 4 }}>
-                <strong>📂 Chọn file tài liệu:</strong>
+                <strong>📂 Chọn file tài liệu (chọn một hoặc nhiều file):</strong>
                 <input 
                   type="file" 
+                  multiple
                   accept=".pdf,.pptx,.txt,.md" 
                   style={{
                     padding: 8, borderRadius: 10, border: "2px solid #2f2a3c",
                     background: "white", fontSize: "0.85rem", width: "100%", boxSizing: "border-box"
                   }}
                   onChange={e => {
-                    const file = e.target.files[0];
-                    setAiFile(file || null);
+                    const files = Array.from(e.target.files || []);
+                    setAiFiles(files);
                     setAiError("");
                   }}
                   disabled={aiLoading}
                 />
               </label>
+
+              {aiFiles.length > 0 && (
+                <div style={{
+                  fontSize: "0.8rem", background: "#f8fafc", padding: "8px 12px",
+                  borderRadius: 12, border: "2px dashed #cbd5e1", display: "flex",
+                  flexDirection: "column", gap: 4, maxHeight: 110, overflowY: "auto"
+                }}>
+                  <strong>📄 Danh sách file đã chọn ({aiFiles.length}):</strong>
+                  {aiFiles.map((f, idx) => (
+                    <div key={idx} style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap", color: "#475569" }}>
+                      • {f.name} ({Math.round(f.size / 1024)} KB)
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div style={{ display: "flex", gap: 10 }}>
                 <label style={{ flex: 1, fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: 4 }}>
@@ -1930,7 +2050,7 @@ B. Sai
                 className="btn"
                 style={{ background: "#8b5cf6", color: "white" }}
                 onClick={handleGenerateQuestions}
-                disabled={aiLoading || !aiFile}
+                disabled={aiLoading || aiFiles.length === 0}
               >
                 Tạo câu hỏi 🚀
               </button>
