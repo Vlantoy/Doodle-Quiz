@@ -634,7 +634,7 @@ function createQuestionFromParsed(parsed) {
 export default function CreatePage() {
   const router = useRouter();
 
-  const [title,            setTitle]            = useState("My brain KingDom Quiz");
+  const [title,            setTitle]            = useState("My Brain Kingdom Quiz");
   const [roundDurationSec, setRoundDurationSec] = useState(20);
   const [questions,        setQuestions]        = useState([newQuestion()]);
   const [selectedIdx,      setSelectedIdx]      = useState(0);

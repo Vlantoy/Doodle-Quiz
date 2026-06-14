@@ -44,7 +44,7 @@ export default function HomePage() {
   return (
     <main className="app-shell grid" style={{ gap: 22 }}>
       <section className="card">
-        <h1 className="title">brain KingDom</h1>
+        <h1 className="title">Brain Kingdom</h1>
         <p className="subtitle">Local-first trap puzzles, one-way REST sync, and cute chaos.</p>
       </section>
 

@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "brain KingDom",
+  title: "Brain Kingdom",
   description: "Hand-drawn local-first PvP quiz game"
 };
 
