@@ -2097,7 +2097,15 @@ export default function DoodleCanvas({
                       const unscaledHeight = node.offsetHeight;
                       const visualHeight = unscaledHeight * scaleFactor;
                       const minParentHeight = el.h_ratio * canvasWidth;
-                      parent.style.minHeight = `${Math.max(minParentHeight, visualHeight)}px`;
+                      
+                      let fitScale = 1.0;
+                      if (visualHeight > minParentHeight && minParentHeight > 0) {
+                        fitScale = minParentHeight / visualHeight;
+                      }
+                      
+                      node.style.transform = `translate(-50%, -50%) scale(${scaleFactor * fitScale})`;
+                      parent.style.height = `${minParentHeight}px`;
+                      parent.style.minHeight = `${minParentHeight}px`;
                     }
                   }
                 }}
