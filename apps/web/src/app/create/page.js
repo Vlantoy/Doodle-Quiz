@@ -484,8 +484,7 @@ Yêu cầu tạo câu hỏi:
 6. Thang cấp độ tư duy mong muốn: ${cognitiveLevel}
 8. ĐỘ DÀI CÂU HỎI VÀ ĐÁP ÁN PHẢI VỪA PHẢI, CÔ ĐỌNG:
    * Câu hỏi cần ngắn gọn, đi thẳng vào vấn đề, súc tích (tránh viết dài dòng, tối đa 2 dòng văn bản).
-   * Các đáp án (A, B, C, D) phải cực kỳ ngắn gọn, dễ đọc, cô đọng (tối đa 1 dòng văn bản hoặc dưới 15 từ cho mỗi đáp án). Tuyệt đối không viết giải thích dông dài hoặc câu ghép phức tạp trong phương án chọn.
-   * Chi tiết lý giải tại sao đúng/sai bắt buộc phải ghi trong phần "Giải thích:" riêng biệt bên dưới.
+   * Các đáp án (A, B, C, D) phải cực kỳ ngắn gọn, dễ đọc, cô đọng (tối đa 1 dòng hoặc dưới 15 từ cho mỗi đáp án). Tuyệt đối không viết giải thích dông dài hoặc câu ghép phức tạp trong phương án chọn.
 
 Với mỗi câu hỏi, xuất theo định dạng CHÍNH XÁC như mẫu sau (không viết thêm lời dẫn ở đầu hay ở cuối, không chèn markdown code blocks khác, mỗi câu hỏi ngăn cách nhau bằng dòng kẻ nét đứt '---------------'):
 
@@ -498,11 +497,6 @@ C. [Đáp án C]
 D. [Đáp án D]
 
 Đáp án đúng: [A/B/C/D]
-
-Giải thích:
-* Tại sao đáp án đúng đúng.
-* Tại sao các đáp án còn lại sai.
-* Trích dẫn hoặc chỉ ra phần kiến thức liên quan trong tài liệu.
 ---------------
 Câu 2:
 ...
