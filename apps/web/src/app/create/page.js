@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { hostRoom } from "lib/api";
 import { getOrCreateUser, saveUser, saveDraft, listDrafts, saveRoomState, randomUUID } from "lib/storage";
 import DoodleCanvas from "components/DoodleCanvas";
+import JSZip from "jszip";
 
 // -- Quick-Start Template Presets (spec �5) -------------------------------------
 // Static IDs only � no crypto.randomUUID() at module level (SSR safe)
@@ -254,6 +255,252 @@ function parseQuickPaste(text) {
   return parsedQuestions;
 }
 
+const GEMINI_API_KEYS_B64 = [
+  "QVEuQWI4Uk42SlJSWDVfaUU0OTdrVEs3M1FwVGZDOWVHbzRQN253bXBGeF93YWY3ejhSVGc=",
+  "QVEuQWI4Uk42SXJQMTFrcC01M0lZRGRJZ0dWMlYxLUdvR1N2RDYxSkdEME5aMWE1YThMaUE=",
+  "QVEuQWI4Uk42SjBCU1J5UWdsMkttVTFMaWlNMWppc0QzS1FpckU5Z0M2bWVMbHQybkFqZmc=",
+  "QVEuQWI4Uk42SUd0UjFCbVZDRU1qQ3E3MFAxd3JaR2VDWUotdVA0akxCUHJDSEpKNy1hOHc=",
+  "QVEuQWI4Uk42TGR0Nkl0Zmh4YWlxdW8yb0h0UTNhTWkxT2tyM3lvQ1prUmlaaDNTenVXRHc=",
+  "QVEuQWI4Uk42SUpTVkF1Z3E2T25femswbzdnWl8tWTV0aDRUWklYM2d3NXpxOTRLNjNtRFE=",
+  "QVEuQWI4Uk42S2c5NUlsY0w4WmlsUXRjRVZJb21JUjEwRkZEZHM1aWpnQWZhQ0FRZDdBTmc=",
+  "QVEuQWI4Uk42SVRyQ0YwY1R0aEtISkJxX2ZRd2hwX0w2OTNJWDRQbmhJdGszS0ZrVE9SUGc=",
+  "QVEuQWI4Uk42SktlLV9SbkN5b05DNXpMalgxTW91MlFiM2lXMHV4eThYS3MtdENtdXJpZEE=",
+  "QVEuQWI4Uk42S000T0hGc214MkFObXlHYzVLdVlNSEh2TFRSUnFhNGpHM1RSbjVFOFpuanc=",
+  "QVEuQWI4Uk42S2dwNEhFV0UxZndvcVdVckxFZnNkZXlxMkZvVGVJd3J1Uy1nQlhxUE96eUE=",
+  "QVEuQWI4Uk42SVFIREttOE4teHZGYWRqVVFabVZlNzdhUXdpWWpxMkZCakNCdzEtbWM4Nnc=",
+  "QVEuQWI4Uk42STFfdU1RV1gwU3ppUzFYbGZnLVF1OE1FclVxNWdhWC1YRHZhbUN4UkR5T3c=",
+  "QVEuQWI4Uk42SnRMTlY5QUxlVWg1YVd6ZnJYSTNMLVZDa1p5TUV5TG1BTFEyNm9jWjV0YlE=",
+  "QVEuQWI4Uk42STN5ZlZQVG1PZkxGeWEya0ZteTJ3NFljd0dNS0RJd2tQdUk2MFpQem9wVVE=",
+  "QVEuQWI4Uk42THRGTUxhOUIzX2tHZGtWc00wYzFuZ3hoVHJCS1ppZWc3Mm4tbUx4ZXdsa3c=",
+  "QVEuQWI4Uk42S0ZLYXRwYUJXbzlyNEV2aTlJeElBSG1hY3dWb0lKSTFSckNmYWRNa3lXd2c=",
+  "QVEuQWI4Uk42SzlqY3VUV3k4UG5PNFVuaUpEODRVV1N4dmdUYXlnejQyUXZhNEFDcEVtTHc=",
+  "QVEuQWI4Uk42S0lObndjMHAwbXRPV3E0M29aeUZoakdlc3lFWTIyNmZEcUpxUmRPUFg5UFE=",
+  "QVEuQWI4Uk42S2lSZThRbHVJN3FIcVh5dTdNUFl4ZDVmeXhNVDl5M3ZTaWJhOFoyZ3R2Mmc="
+];
+
+const GEMINI_API_KEYS = GEMINI_API_KEYS_B64.map(k => {
+  if (typeof window !== "undefined") {
+    return window.atob(k);
+  } else {
+    return Buffer.from(k, "base64").toString("utf-8");
+  }
+});
+
+function getNextApiKey() {
+  const currentStr = typeof window !== "undefined" ? localStorage.getItem("cutequiz:gemini_key_index") || "0" : "0";
+  let index = parseInt(currentStr, 10);
+  if (isNaN(index) || index < 0) index = 0;
+  
+  const key = GEMINI_API_KEYS[index % GEMINI_API_KEYS.length];
+  if (typeof window !== "undefined") {
+    localStorage.setItem("cutequiz:gemini_key_index", String(index + 1));
+  }
+  return { key, index: index % GEMINI_API_KEYS.length };
+}
+
+async function callGeminiAPI(prompt, fileData) {
+  const { key, index } = getNextApiKey();
+  console.log(`[AI Quiz] Using Gemini API key index ${index + 1}/20`);
+  
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+  
+  const parts = [];
+  
+  if (fileData) {
+    if (fileData.mimeType === "text/plain") {
+      parts.push({ text: `TÀI LIỆU KHẢO SÁT:\n${fileData.text}\n\n` });
+    } else {
+      parts.push({
+        inlineData: {
+          mimeType: fileData.mimeType,
+          data: fileData.base64
+        }
+      });
+    }
+  }
+  
+  parts.push({ text: prompt });
+  
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts }]
+    })
+  });
+  
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`API Error (HTTP ${response.status}): ${errText || response.statusText}`);
+  }
+  
+  const data = await response.json();
+  const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!generatedText) {
+    throw new Error("Không nhận được nội dung trả về từ AI.");
+  }
+  return generatedText;
+}
+
+async function callGeminiAPIWithRetry(prompt, fileData, maxRetries = 5) {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      return await callGeminiAPI(prompt, fileData);
+    } catch (err) {
+      console.warn(`[AI Quiz] Attempt ${attempt + 1} failed with key:`, err.message);
+      attempt++;
+      if (attempt >= maxRetries) throw err;
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+}
+
+async function extractTextFromPptx(file) {
+  const zip = await JSZip.loadAsync(file);
+  let fullText = "";
+  const slideFiles = Object.keys(zip.files).filter(name => name.startsWith("ppt/slides/slide") && name.endsWith(".xml"));
+  
+  slideFiles.sort((a, b) => {
+    const numA = parseInt(a.match(/slide(\d+)\.xml/)[1], 10);
+    const numB = parseInt(b.match(/slide(\d+)\.xml/)[1], 10);
+    return numA - numB;
+  });
+  
+  for (const slideFile of slideFiles) {
+    const content = await zip.files[slideFile].async("string");
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(content, "text/xml");
+    const textNodes = xmlDoc.getElementsByTagName("a:t");
+    let slideText = "";
+    for (let i = 0; i < textNodes.length; i++) {
+      slideText += textNodes[i].textContent + " ";
+    }
+    if (slideText.trim()) {
+      const slideNum = slideFile.match(/slide(\d+)\.xml/)[1];
+      fullText += `--- Slide ${slideNum} ---\n${slideText.trim()}\n\n`;
+    }
+  }
+  return fullText;
+}
+
+function parseAiGeneratedQuestions(text) {
+  const normalized = text.replace(/\r\n/g, "\n").trim();
+  const questionBlocks = normalized.split(/(?:^|\n)(?=Câu\s+\d+:|Question\s+\d+:)/i);
+  const parsedQuestions = [];
+  
+  for (const block of questionBlocks) {
+    const lines = block.split("\n").map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) continue;
+    
+    const headerMatch = lines[0].match(/^(?:Câu|Question)\s+\d+:\s*(.*)$/i);
+    if (!headerMatch) continue;
+    
+    let prompt = headerMatch[1].trim();
+    let options = [];
+    let correctLetter = "";
+    let explanationLines = [];
+    let state = "prompt";
+    
+    if (!prompt && lines.length > 1) {
+      if (!/^[A-Z]\s*\.\s*/i.test(lines[1])) {
+        prompt = lines[1];
+        lines.shift();
+      }
+    }
+    
+    for (let j = 1; j < lines.length; j++) {
+      const line = lines[j];
+      const optionMatch = line.match(/^([A-Z])\s*\.\s*(.*)$/i);
+      if (optionMatch) {
+        options.push({
+          letter: optionMatch[1].toUpperCase(),
+          text: optionMatch[2].trim()
+        });
+        state = "options";
+        continue;
+      }
+      
+      const correctMatch = line.match(/^(?:Đáp án đúng|Đáp án|Correct Answer|Correct)\s*:\s*([A-Z])\s*$/i);
+      if (correctMatch) {
+        correctLetter = correctMatch[1].toUpperCase();
+        state = "correct";
+        continue;
+      }
+      
+      if (/^(?:Giải thích|Explanation)\s*:\s*/i.test(line)) {
+        state = "explanation";
+        const explContent = line.replace(/^(?:Giải thích|Explanation)\s*:\s*/i, "").trim();
+        if (explContent) explanationLines.push(explContent);
+        continue;
+      }
+      
+      if (state === "prompt") {
+        prompt += (prompt ? "\n" : "") + line;
+      } else if (state === "explanation") {
+        explanationLines.push(line);
+      }
+    }
+    
+    if (prompt && options.length > 0) {
+      parsedQuestions.push({
+        prompt: prompt.trim(),
+        options,
+        correctLetter,
+        note: explanationLines.join("\n").trim()
+      });
+    }
+  }
+  return parsedQuestions;
+}
+
+const makePrompt = (count, difficulty, cognitiveLevel) => {
+  return `Bạn là chuyên gia thiết kế đề thi và đánh giá kiến thức.
+
+Nhiệm vụ:
+* Đọc kỹ toàn bộ tài liệu tôi cung cấp.
+* Chỉ sử dụng thông tin xuất hiện trong tài liệu.
+* Không được bổ sung kiến thức bên ngoài.
+* Không được suy đoán hoặc tự bịa nội dung.
+
+Yêu cầu tạo câu hỏi:
+1. Tạo đúng ${count} câu hỏi trắc nghiệm 4 đáp án (A, B, C, D).
+2. Mỗi câu chỉ có 1 đáp án đúng.
+3. Các đáp án nhiễu phải hợp lý và dễ gây nhầm lẫn cho người học chưa hiểu sâu.
+4. Ưu tiên kiểm tra khả năng hiểu bản chất, phân biệt khái niệm và áp dụng hơn là học thuộc lòng.
+5. Độ khó mong muốn: ${difficulty}
+6. Thang cấp độ tư duy mong muốn: ${cognitiveLevel}
+7. Phân bố độ khó tổng thể gợi ý:
+   * 30% dễ
+   * 50% trung bình
+   * 20% khó
+
+Với mỗi câu hỏi, xuất theo định dạng CHÍNH XÁC như mẫu sau (không viết thêm lời dẫn ở đầu hay ở cuối, không chèn markdown code blocks khác, mỗi câu hỏi ngăn cách nhau bằng dòng kẻ nét đứt '---------------'):
+
+Câu 1:
+[Câu hỏi hiển thị tại đây]
+
+A. [Đáp án A]
+B. [Đáp án B]
+C. [Đáp án C]
+D. [Đáp án D]
+
+Đáp án đúng: [A/B/C/D]
+
+Giải thích:
+* Tại sao đáp án đúng đúng.
+* Tại sao các đáp án còn lại sai.
+* Trích dẫn hoặc chỉ ra phần kiến thức liên quan trong tài liệu.
+---------------
+Câu 2:
+...
+
+Sau khi tạo xong:
+* Kiểm tra lại từng câu để đảm bảo đáp án đúng thực sự chính xác.
+* Kiểm tra không có trường hợp nhiều đáp án đúng.
+* Báo cáo những phần của tài liệu chưa được bao phủ bởi bộ câu hỏi.`;
+};
+
 function createQuestionFromParsed(parsed) {
   const qId = randomUUID();
   const elements = [];
@@ -272,7 +519,6 @@ function createQuestionFromParsed(parsed) {
     fontSizeScale: 1.1,
   });
   
-  // Dynamic Option Layout coordinates calculation
   const N = parsed.options.length;
   const rows = Math.ceil(N / 2);
   let h = 0.11;
@@ -286,11 +532,12 @@ function createQuestionFromParsed(parsed) {
     ];
   } else if (rows === 2) {
     h = 0.12;
+    // Spaced out Option coordinates
     rawCoords = [
-      { x: 0.12, y: 0.38 },
-      { x: 0.56, y: 0.38 },
-      { x: 0.12, y: 0.62 },
-      { x: 0.56, y: 0.62 }
+      { x: 0.10, y: 0.38 },
+      { x: 0.52, y: 0.38 },
+      { x: 0.10, y: 0.62 },
+      { x: 0.52, y: 0.62 }
     ];
   } else if (rows === 3) {
     h = 0.09;
@@ -313,13 +560,16 @@ function createQuestionFromParsed(parsed) {
   }
   
   const defaultLetters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N"];
+  let correctOptionX = null;
+  let correctOptionY = null;
+  let correctOptionH = h;
+  
   for (let i = 0; i < N; i++) {
     const parsedOpt = parsed.options[i];
     const letter = parsedOpt?.letter || defaultLetters[i] || String.fromCharCode(65 + i);
     const text = parsedOpt?.text || "";
     const content = `${letter}. ${text}`;
     
-    // Center the last block if N is odd
     let x = rawCoords[i]?.x ?? 0.12;
     if (i === N - 1 && N % 2 === 1) {
       x = 0.34;
@@ -332,18 +582,38 @@ function createQuestionFromParsed(parsed) {
       content: content,
       x_ratio: x,
       y_ratio: y,
-      w_ratio: 0.32,
+      w_ratio: rows === 2 ? 0.38 : 0.32,
       h_ratio: h,
       isMovableByPlayer: false,
       color: "#ffd7ba",
       fontSizeScale: rows >= 3 ? 0.75 : 0.85,
+    });
+    
+    if (letter.toUpperCase() === parsed.correctLetter?.toUpperCase()) {
+      correctOptionX = x;
+      correctOptionY = y;
+      correctOptionH = h;
+    }
+  }
+  
+  // Auto-generate correct target zone
+  if (correctOptionX !== null && correctOptionY !== null) {
+    elements.push({
+      id: `q-target-${randomUUID()}`,
+      type: "PRECISION_TARGET",
+      x_ratio: correctOptionX,
+      y_ratio: correctOptionY,
+      w_ratio: rows === 2 ? 0.38 : 0.32,
+      h_ratio: correctOptionH,
+      isHidden: true,
+      role: "CORRECT_ANSWER"
     });
   }
   
   return {
     id: qId,
     prompt: parsed.prompt,
-    note: "",
+    note: parsed.note || "",
     duration: 20,
     canvasImage: "",
     canvasImageFit: "contain",
@@ -379,6 +649,15 @@ export default function CreatePage() {
   const [quickPasteText,   setQuickPasteText]   = useState("");
   const [quickPasteError,  setQuickPasteError]  = useState("");
 
+  const [showAiGenerator,  setShowAiGenerator]  = useState(false);
+  const [aiFile,           setAiFile]           = useState(null);
+  const [aiCount,          setAiCount]          = useState(3);
+  const [aiDifficulty,     setAiDifficulty]     = useState("Phân bố chuẩn (30% dễ, 50% TB, 20% khó)");
+  const [aiCognitive,      setAiCognitive]      = useState("Đầy đủ các cấp độ");
+  const [aiLoading,        setAiLoading]        = useState(false);
+  const [aiLog,            setAiLog]            = useState("");
+  const [aiError,          setAiError]          = useState("");
+
   const [selectedShapeType,        setSelectedShapeType]        = useState("rect");
   const [selectedShapeColor,       setSelectedShapeColor]       = useState("#7c3aed");
   const [selectedShapeIsFilled,    setSelectedShapeIsFilled]    = useState(false);
@@ -413,6 +692,88 @@ export default function CreatePage() {
     setQuickPasteText("");
     setQuickPasteError("");
   }
+
+  const handleGenerateQuestions = async () => {
+    if (!aiFile) {
+      setAiError("Vui lòng chọn 1 file tài liệu (PDF, PPTX, hoặc TXT/MD).");
+      return;
+    }
+    setAiLoading(true);
+    setAiError("");
+    setAiLog("Đang đọc file tài liệu...");
+    
+    try {
+      let fileData = null;
+      if (aiFile.type === "application/pdf") {
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result;
+            const base64Str = dataUrl.split(",")[1];
+            resolve(base64Str);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(aiFile);
+        });
+        fileData = { mimeType: "application/pdf", base64 };
+      } else if (aiFile.name.endsWith(".pptx")) {
+        const text = await extractTextFromPptx(aiFile);
+        if (!text.trim()) {
+          throw new Error("Không thể trích xuất văn bản từ file Slide này. Có thể slide không có chữ hoặc file bị hỏng.");
+        }
+        fileData = { mimeType: "text/plain", text };
+      } else if (aiFile.type === "text/plain" || aiFile.name.endsWith(".txt") || aiFile.name.endsWith(".md")) {
+        const text = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsText(aiFile);
+        });
+        fileData = { mimeType: "text/plain", text };
+      } else {
+        throw new Error("Định dạng file không được hỗ trợ. Vui lòng tải lên PDF, PPTX, TXT hoặc MD.");
+      }
+      
+      setAiLog("Đang chuẩn bị câu hỏi và liên hệ chuyên gia AI...");
+      const prompt = makePrompt(aiCount, aiDifficulty, aiCognitive);
+      
+      setAiLog("AI đang phân tích tài liệu và biên soạn câu hỏi... (Quá trình này có thể mất vài giây)");
+      const aiResponse = await callGeminiAPIWithRetry(prompt, fileData);
+      
+      setAiLog("Đang xử lý kết quả trả về từ AI...");
+      const parsedList = parseAiGeneratedQuestions(aiResponse);
+      if (parsedList.length === 0) {
+        throw new Error("Không thể phân tích định dạng câu hỏi do AI trả về. Thử lại hoặc chọn tài liệu khác.");
+      }
+      
+      const newQuestions = parsedList.map(p => createQuestionFromParsed(p));
+      const oldLen = questions.length;
+      
+      setQuestions(prev => {
+        if (prev.length === 1 && !prev[0].prompt && prev[0].elements.length === 1) {
+          return newQuestions;
+        }
+        return [...prev, ...newQuestions];
+      });
+      
+      setSelectedIdx(prevIdx => {
+        if (questions.length === 1 && !questions[0].prompt && questions[0].elements.length === 1) {
+          return 0;
+        }
+        return oldLen;
+      });
+      
+      setMsg(`🤖 Đã tạo thành công ${newQuestions.length} câu hỏi từ tài liệu bằng AI.`);
+      setShowAiGenerator(false);
+      setAiFile(null);
+    } catch (err) {
+      console.error("[AI Generator Error]", err);
+      setAiError(err.message || "Đã xảy ra lỗi không xác định.");
+    } finally {
+      setAiLoading(false);
+      setAiLog("");
+    }
+  };
 
   function addQuestion() {
     const nq = newQuestion();
@@ -700,6 +1061,11 @@ export default function CreatePage() {
               style={{ width: "100%", marginBottom: 8, padding: "6px 10px", fontSize: "0.82rem", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
               onClick={() => setShowQuickPaste(true)}>
               ⚡ Nhập nhanh từ Template
+            </button>
+            <button type="button" className="btn"
+              style={{ width: "100%", marginBottom: 8, padding: "6px 10px", fontSize: "0.82rem", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "#8b5cf6", color: "white" }}
+              onClick={() => setShowAiGenerator(true)}>
+              🤖 Tạo câu hỏi bằng AI
             </button>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {questions.map((item, idx) => (
@@ -1441,6 +1807,132 @@ B. Sai
                 onClick={() => handleImportQuestions("overwrite")}
                 disabled={!quickPasteText.trim()}>
                 Nhập & Ghi đè
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAiGenerator && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 10000,
+          background: "rgba(30, 20, 50, 0.4)", backdropFilter: "blur(8px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 16
+        }}>
+          <div style={{
+            background: "#fffaf0", border: "3px solid #2f2a3c", borderRadius: 24,
+            width: "100%", maxWidth: 540, padding: 24, display: "flex", flexDirection: "column",
+            gap: 16, boxShadow: "8px 8px 0 rgba(0,0,0,0.15)", position: "relative"
+          }}>
+            <h3 style={{ fontFamily: "Itim, cursive", margin: 0, fontSize: "1.5rem", color: "var(--ink)" }}>
+              🤖 Tạo câu hỏi bằng AI (Gemini)
+            </h3>
+            
+            <p style={{ margin: 0, fontSize: "0.88rem", opacity: 0.75, lineHeight: 1.4 }}>
+              Tải lên tài liệu PDF, Slide (.pptx) hoặc tài liệu văn bản (.txt, .md) để AI đọc và tạo tự động bộ câu hỏi trắc nghiệm chất lượng cao.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <label style={{ fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: 4 }}>
+                <strong>📂 Chọn file tài liệu:</strong>
+                <input 
+                  type="file" 
+                  accept=".pdf,.pptx,.txt,.md" 
+                  style={{
+                    padding: 8, borderRadius: 10, border: "2px solid #2f2a3c",
+                    background: "white", fontSize: "0.85rem", width: "100%", boxSizing: "border-box"
+                  }}
+                  onChange={e => {
+                    const file = e.target.files[0];
+                    setAiFile(file || null);
+                    setAiError("");
+                  }}
+                  disabled={aiLoading}
+                />
+              </label>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <label style={{ flex: 1, fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: 4 }}>
+                  <strong>🔢 Số câu hỏi:</strong>
+                  <input 
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={aiCount}
+                    onChange={e => setAiCount(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                    style={{ padding: "6px 10px", width: "100%", boxSizing: "border-box" }}
+                    disabled={aiLoading}
+                  />
+                </label>
+
+                <label style={{ flex: 2, fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: 4 }}>
+                  <strong>📈 Độ khó:</strong>
+                  <select
+                    className="input"
+                    value={aiDifficulty}
+                    onChange={e => setAiDifficulty(e.target.value)}
+                    style={{ padding: "6px 10px", width: "100%", boxSizing: "border-box" }}
+                    disabled={aiLoading}
+                  >
+                    <option value="Phân bố chuẩn (30% dễ, 50% TB, 20% khó)">Phân bố chuẩn (30% dễ, 50% TB, 20% khó)</option>
+                    <option value="Dễ">Dễ</option>
+                    <option value="Trung bình">Trung bình</option>
+                    <option value="Khó">Khó</option>
+                  </select>
+                </label>
+              </div>
+
+              <label style={{ fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: 4 }}>
+                <strong>🧠 Cấp độ tư duy (Cognitive taxonomy):</strong>
+                <select
+                  className="input"
+                  value={aiCognitive}
+                  onChange={e => setAiCognitive(e.target.value)}
+                  style={{ padding: "6px 10px", width: "100%", boxSizing: "border-box" }}
+                  disabled={aiLoading}
+                >
+                  <option value="Đầy đủ các cấp độ">Đầy đủ các cấp độ</option>
+                  <option value="Nhận biết">Nhận biết</option>
+                  <option value="Thông hiểu">Thông hiểu</option>
+                  <option value="Vận dụng">Vận dụng</option>
+                  <option value="Vận dụng cao">Vận dụng cao</option>
+                </select>
+              </label>
+            </div>
+
+            {aiLog && (
+              <div style={{ background: "#e0f2fe", border: "2px solid #0284c7", borderRadius: 12, padding: "8px 12px", fontSize: "0.8rem", color: "#0369a1", display: "flex", alignItems: "center", gap: 8 }}>
+                <span className="spinner" style={{ display: "inline-block", width: 14, height: 14, border: "2px solid #0369a1", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                <span>{aiLog}</span>
+              </div>
+            )}
+
+            {aiError && (
+              <div style={{ background: "#fee2e2", border: "2px solid #dc2626", borderRadius: 12, padding: "8px 12px", fontSize: "0.8rem", color: "#b91c1c", fontWeight: "bold" }}>
+                ⚠️ {aiError}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+              <button 
+                type="button" 
+                className="btn secondary" 
+                onClick={() => { setShowAiGenerator(false); setAiError(""); setAiLog(""); }}
+                disabled={aiLoading}
+              >
+                Hủy
+              </button>
+              
+              <button 
+                type="button" 
+                className="btn"
+                style={{ background: "#8b5cf6", color: "white" }}
+                onClick={handleGenerateQuestions}
+                disabled={aiLoading || !aiFile}
+              >
+                Tạo câu hỏi 🚀
               </button>
             </div>
           </div>
