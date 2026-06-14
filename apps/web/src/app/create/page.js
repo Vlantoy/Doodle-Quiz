@@ -482,10 +482,10 @@ Yêu cầu tạo câu hỏi:
 4. Ưu tiên kiểm tra khả năng hiểu bản chất, phân biệt khái niệm và áp dụng hơn là học thuộc lòng.
 5. Độ khó mong muốn: ${difficulty}
 6. Thang cấp độ tư duy mong muốn: ${cognitiveLevel}
-7. Phân bố độ khó tổng thể gợi ý:
-   * 30% dễ
-   * 50% trung bình
-   * 20% khó
+8. ĐỘ DÀI CÂU HỎI VÀ ĐÁP ÁN PHẢI VỪA PHẢI, CÔ ĐỌNG:
+   * Câu hỏi cần ngắn gọn, đi thẳng vào vấn đề, súc tích (tránh viết dài dòng, tối đa 2 dòng văn bản).
+   * Các đáp án (A, B, C, D) phải cực kỳ ngắn gọn, dễ đọc, cô đọng (tối đa 1 dòng văn bản hoặc dưới 15 từ cho mỗi đáp án). Tuyệt đối không viết giải thích dông dài hoặc câu ghép phức tạp trong phương án chọn.
+   * Chi tiết lý giải tại sao đúng/sai bắt buộc phải ghi trong phần "Giải thích:" riêng biệt bên dưới.
 
 Với mỗi câu hỏi, xuất theo định dạng CHÍNH XÁC như mẫu sau (không viết thêm lời dẫn ở đầu hay ở cuối, không chèn markdown code blocks khác, mỗi câu hỏi ngăn cách nhau bằng dòng kẻ nét đứt '---------------'):
 
