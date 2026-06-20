@@ -447,7 +447,7 @@ export default function RoomPage({ params }) {
     if (isMultiple) {
       setPlayerClicks(prev => {
         if (prev.length >= correctZones.length) return prev;
-        const newClicks = [...prev, { rx: payload.rx, ry: payload.ry }];
+        const newClicks = [...prev, { rx: payload.rx, ry: payload.ry, isLocalHit: payload.isLocalHit }];
         return newClicks;
       });
       lastGaugeRef.current = (payload.gaugeValue !== undefined && payload.gaugeValue !== null) ? payload.gaugeValue : null;
@@ -482,14 +482,16 @@ export default function RoomPage({ params }) {
           const click = playerClicks[i];
           const zone = correctZones[i];
           let hit = false;
-          if (zone.type === "PRECISION_TARGET") {
-            if (
-              click.rx >= zone.x_ratio && click.rx <= zone.x_ratio + zone.w_ratio &&
-              click.ry >= zone.y_ratio && click.ry <= zone.y_ratio + zone.h_ratio
-            ) { hit = true; }
-          } else if (zone.type === "FREEFORM_ZONE") {
-            if (zone.points_ratio?.length >= 3 && pointInPolygon(click.rx, click.ry, zone.points_ratio)) {
-              hit = true;
+          if (click && click.isLocalHit) {
+            if (zone.type === "PRECISION_TARGET") {
+              if (
+                click.rx >= zone.x_ratio && click.rx <= zone.x_ratio + zone.w_ratio &&
+                click.ry >= zone.y_ratio && click.ry <= zone.y_ratio + zone.h_ratio
+              ) { hit = true; }
+            } else if (zone.type === "FREEFORM_ZONE") {
+              if (zone.points_ratio?.length >= 3 && pointInPolygon(click.rx, click.ry, zone.points_ratio)) {
+                hit = true;
+              }
             }
           }
           if (!hit) {
@@ -504,6 +506,8 @@ export default function RoomPage({ params }) {
         function match(clickIdx) {
           if (clickIdx === playerClicks.length) return true;
           const click = playerClicks[clickIdx];
+          if (!click || !click.isLocalHit) return false;
+
           for (let zIdx = 0; zIdx < correctZones.length; zIdx++) {
             if (visited[zIdx]) continue;
             const zone = correctZones[zIdx];
@@ -1053,9 +1057,19 @@ export default function RoomPage({ params }) {
                   ) : isMultiple ? (
                     <div style={{ marginTop: 8 }}>
                       <p style={{ margin: "0 0 8px", fontWeight: "bold", color: "#7c3aed", fontSize: "0.85rem", lineHeight: 1.4 }}>
-                        🧩 YÊU CẦU CLICK ĐÚNG THỨ TỰ:
-                        <br />
-                        Hãy click vào các target zone theo thứ tự từ 1 đến {correctZones.length}!
+                        {question?.requireSequence ? (
+                          <>
+                            🧩 YÊU CẦU CLICK ĐÚNG THỨ TỰ:
+                            <br />
+                            Hãy click vào các target zone theo thứ tự từ 1 đến {correctZones.length}!
+                          </>
+                        ) : (
+                          <>
+                            🧩 CÂU HỎI NHIỀU VÙNG CHỌN:
+                            <br />
+                            Hãy click vào tất cả {correctZones.length} vùng chọn đúng (theo thứ tự bất kỳ)!
+                          </>
+                        )}
                       </p>
                       <div style={{ fontSize: "0.82rem", marginBottom: 8, opacity: 0.8 }}>
                         Đã click: <strong>{playerClicks.length} / {correctZones.length}</strong>

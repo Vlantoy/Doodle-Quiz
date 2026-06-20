@@ -1426,6 +1426,7 @@ export default function DoodleCanvas({
           w_ratio: w,
           h_ratio: h,
           isHidden: true,
+          role: defaultZoneRole,
         }]);
       }
       drawStartRatio.current = null;
@@ -1540,20 +1541,37 @@ export default function DoodleCanvas({
         typeof gaugeEl.correctMin !== "number" ||
         (gaugeValue >= gaugeEl.correctMin && gaugeValue <= gaugeEl.correctMax);
 
-      // §1 backwards scan: topmost element wins (highest index = rendered last = on top)
+      // Layered scan: topmost element wins. Covering elements (decoy zones, shapes, cover blocks) block target zones underneath.
       let hit = false;
       for (let i = liveElements.length - 1; i >= 0; i--) {
         const el = liveElements[i];
-        if (el.type === "PRECISION_TARGET" && el.role !== "DECOY") {
-          if (
-            rx >= el.x_ratio && rx <= el.x_ratio + el.w_ratio &&
-            ry >= el.y_ratio && ry <= el.y_ratio + el.h_ratio
-          ) { hit = true; break; }
-        } else if (el.type === "FREEFORM_ZONE" && el.role !== "DECOY") {
-          // Ray-casting point-in-polygon: accurate for any convex or concave freeform shape
-          if (el.points_ratio?.length >= 3 && pointInPolygon(rx, ry, el.points_ratio)) {
-            hit = true; break;
+        
+        let isInside = false;
+        if (el.type === "PRECISION_TARGET") {
+          isInside = rx >= el.x_ratio && rx <= el.x_ratio + el.w_ratio &&
+                     ry >= el.y_ratio && ry <= el.y_ratio + el.h_ratio;
+        } else if (el.type === "FREEFORM_ZONE") {
+          isInside = el.points_ratio?.length >= 3 && pointInPolygon(rx, ry, el.points_ratio);
+        } else if (el.type === "SHAPE_BLOCK") {
+          if (el.shapeType !== "custom") {
+            isInside = rx >= el.x_ratio && rx <= el.x_ratio + el.w_ratio &&
+                       ry >= el.y_ratio && ry <= el.y_ratio + el.h_ratio;
+          } else {
+            isInside = el.points_ratio?.length >= 3 && pointInPolygon(rx, ry, el.points_ratio);
           }
+        } else if (el.type === "ANSWER_BLOCK" || el.isMovableByPlayer) {
+          isInside = rx >= el.x_ratio && rx <= el.x_ratio + el.w_ratio &&
+                     ry >= el.y_ratio && ry <= el.y_ratio + el.h_ratio;
+        }
+        
+        if (isInside) {
+          if ((el.type === "PRECISION_TARGET" || el.type === "FREEFORM_ZONE") && el.role !== "DECOY") {
+            hit = true;
+          } else {
+            // Decoy zone, cover block, or shape block on top blocks the correct target zone underneath
+            hit = false;
+          }
+          break;
         }
       }
 
@@ -1733,12 +1751,12 @@ export default function DoodleCanvas({
     return () => container.removeEventListener("paste", handlePaste);
   }, [isCreator]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Delete / Backspace: remove the currently selected element ─────────────
+  // ── Keyboard shortcuts (Duplicate Ctrl+D, Delete, Backspace, Polyline keys) ──
   useEffect(() => {
     if (!isCreator) return;
-    const container = containerRef.current;
-    if (!container) return;
     function onKeyDown(e) {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable) return;
+
       const mode = creatorModeRef.current;
       const poly = drawingPolylineRef.current;
 
@@ -1784,8 +1802,8 @@ export default function DoodleCanvas({
         }
       }
 
+      // Ctrl+D to duplicate element
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
-        if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
         const id = selectedElemIdRef.current;
         if (id) {
           e.preventDefault();
@@ -1811,22 +1829,22 @@ export default function DoodleCanvas({
         return;
       }
 
-      if (e.key !== "Delete" && e.key !== "Backspace") return;
-      // Only if the canvas container (not a text input) has focus
-      if (e.target !== container) return;
-      const id = selectedElemIdRef.current;
-      if (!id) return;
-      e.preventDefault();
-      setSelectedElemId(null);
-      setLiveElements(prev => {
-        const n = prev.filter(el => el.id !== id);
-        onElemChangeRef.current?.(n);
-        return n;
-      });
+      // Delete or Backspace to remove element
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const id = selectedElemIdRef.current;
+        if (!id) return;
+        e.preventDefault();
+        setSelectedElemId(null);
+        setLiveElements(prev => {
+          const n = prev.filter(el => el.id !== id);
+          onElemChangeRef.current?.(n);
+          return n;
+        });
+      }
     }
-    container.addEventListener("keydown", onKeyDown);
-    return () => container.removeEventListener("keydown", onKeyDown);
-  }, [isCreator]); // eslint-disable-line react-hooks/exhaustive-deps
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isCreator, liveElements]);
 
   const adjustTextareaParentHeight = (textarea, scaleFactor, hRatio) => {
     if (!textarea) return;
@@ -1836,7 +1854,8 @@ export default function DoodleCanvas({
       const unscaledHeight = textarea.scrollHeight;
       textarea.style.height = `${unscaledHeight}px`;
       const visualHeight = unscaledHeight * scaleFactor;
-      const minParentHeight = hRatio * canvasWidth;
+      const canvasHeight = canvasWidth * 9 / 16;
+      const minParentHeight = hRatio * canvasHeight;
       parent.style.minHeight = `${Math.max(minParentHeight, visualHeight)}px`;
     }
   };
@@ -2096,7 +2115,8 @@ export default function DoodleCanvas({
                     if (parent) {
                       const unscaledHeight = node.offsetHeight;
                       const visualHeight = unscaledHeight * scaleFactor;
-                      const minParentHeight = el.h_ratio * canvasWidth;
+                      const canvasHeight = canvasWidth * 9 / 16;
+                      const minParentHeight = el.h_ratio * canvasHeight;
                       
                       let fitScale = 1.0;
                       if (visualHeight > minParentHeight && minParentHeight > 0) {

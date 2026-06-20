@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { hostRoom } from "lib/api";
 import { getOrCreateUser, saveUser, saveDraft, listDrafts, saveRoomState, randomUUID } from "lib/storage";
@@ -636,7 +636,73 @@ export default function CreatePage() {
 
   const [title,            setTitle]            = useState("My Brain Kingdom Quiz");
   const [roundDurationSec, setRoundDurationSec] = useState(20);
-  const [questions,        setQuestions]        = useState([newQuestion()]);
+  const [questions,        _setQuestions]       = useState([newQuestion()]);
+  const historyRef = useRef([]);
+  const historyIndexRef = useRef(-1);
+
+  // Wrapper function to intercept updates and push to the history stack
+  function setQuestions(newQuestionsOrUpdater) {
+    _setQuestions(prev => {
+      const next = typeof newQuestionsOrUpdater === "function" ? newQuestionsOrUpdater(prev) : newQuestionsOrUpdater;
+      
+      const currentHistory = historyRef.current.slice(0, historyIndexRef.current + 1);
+      const nextHistory = [...currentHistory, JSON.parse(JSON.stringify(next))];
+      if (nextHistory.length > 50) {
+        nextHistory.shift();
+      }
+      historyRef.current = nextHistory;
+      historyIndexRef.current = nextHistory.length - 1;
+      
+      return next;
+    });
+  }
+
+  function undo() {
+    if (historyIndexRef.current > 0) {
+      historyIndexRef.current--;
+      const prevState = historyRef.current[historyIndexRef.current];
+      _setQuestions(JSON.parse(JSON.stringify(prevState)));
+      setSelectedIdx(prev => Math.min(prev, prevState.length - 1));
+      setMsg("↩️ Đã Hoàn tác (Undo)");
+      setTimeout(() => setMsg(""), 1500);
+    }
+  }
+
+  function redo() {
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      historyIndexRef.current++;
+      const nextState = historyRef.current[historyIndexRef.current];
+      _setQuestions(JSON.parse(JSON.stringify(nextState)));
+      setSelectedIdx(prev => Math.min(prev, nextState.length - 1));
+      setMsg("🔁 Đã Làm lại (Redo)");
+      setTimeout(() => setMsg(""), 1500);
+    }
+  }
+
+  // Bind Ctrl+Z / Ctrl+Y shortcuts globally
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable) return;
+      
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        redo();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Initialize history stack on first load
+  useEffect(() => {
+    if (questions.length > 0 && historyRef.current.length === 0) {
+      historyRef.current = [JSON.parse(JSON.stringify(questions))];
+      historyIndexRef.current = 0;
+    }
+  }, [questions]);
   const [selectedIdx,      setSelectedIdx]      = useState(0);
   const [canvasMode,       setCanvasMode]       = useState("pan");
   const [editingElemId,    setEditingElemId]    = useState(null);
@@ -1774,16 +1840,39 @@ export default function CreatePage() {
                 <div style={{
                   position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 999,
                   background: "#fffaf0", border: "3px solid #2f2a3c", borderRadius: 14,
-                  padding: 12, width: 280, boxShadow: "4px 4px 0 #0000002a",
-                  fontSize: "0.85rem", lineHeight: 1.6,
+                  padding: 16, width: 340, boxShadow: "4px 4px 0 #0000002a",
+                  fontSize: "0.85rem", lineHeight: 1.5,
+                  maxHeight: "80vh", overflowY: "auto"
                 }}>
-                  <strong style={{ display: "block", marginBottom: 6, fontSize: "0.95rem" }}>ℹ️ Hướng dẫn cách làm</strong>
-                  <ul style={{ margin: 0, paddingLeft: 18, opacity: 0.85, listStyleType: "disc" }}>
-                    <li>Vùng Target (🎯) sẽ <strong>ẩn với người chơi</strong> — đây chính là bẫy (trap).</li>
-                    <li>Đặt <strong>Cover Block</strong> lên trên để người chơi phải kéo ra mới thấy.</li>
-                    <li>Đặt zoom ≤ 0.4 cho phong cách tìm kim đáy bể ("Microscopic Quest").</li>
-                    <li>Thêm <strong>Gauge Slider</strong> để yêu cầu kết hợp kéo thanh trượt + click.</li>
-                  </ul>
+                  <strong style={{ display: "block", marginBottom: 10, fontSize: "1rem", fontFamily: "Itim, cursive", borderBottom: "2px solid #2f2a3c", paddingBottom: 4 }}>
+                    🎮 LUỒNG HOẠT ĐỘNG CỦA GAME
+                  </strong>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div>
+                      <strong style={{ color: "var(--ink)" }}>1. Thiết kế câu hỏi (Canvas):</strong>
+                      <ul style={{ margin: "4px 0 0 14px", padding: 0, listStyleType: "disc", opacity: 0.85 }}>
+                        <li><strong>Văn bản & Đáp án:</strong> Tạo tự động bằng AI, nhập từ mẫu hoặc tự thêm. Nhấp đúp để chỉnh sửa chữ.</li>
+                        <li><strong>Vùng đáp án (✅ Target Zone):</strong> Vẽ trực tiếp đè lên vị trí đáp án đúng. Vùng này sẽ <strong>ẩn hoàn toàn</strong> khi chơi.</li>
+                        <li><strong>Khối che phủ (📦 Cover Block):</strong> Đặt chồng lên vùng đáp án để người chơi phải kéo ra mới nhìn thấy.</li>
+                        <li><strong>Bẫy gây nhiễu (🪤 Decoy Zone):</strong> Vẽ các vùng chọn sai để đánh lừa người chơi.</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <strong style={{ color: "var(--ink)" }}>2. Cách chơi & Tương tác:</strong>
+                      <ul style={{ margin: "4px 0 0 14px", padding: 0, listStyleType: "disc", opacity: 0.85 }}>
+                        <li>Người chơi nhấp chuột vào bất cứ vị trí nào trên màn hình để dự đoán đáp án đúng.</li>
+                        <li>Nếu có <strong>Khối che phủ (Cover)</strong>, người chơi bắt buộc phải nhấn giữ để kéo khối đó sang một bên rồi mới bấm vào vùng đáp án lộ ra ở dưới.</li>
+                        <li>Nếu có <strong>Thanh trượt (Slider)</strong>, người chơi phải kéo nút trượt tới đúng khoảng số rồi mới bấm chọn vị trí trên hình.</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <strong style={{ color: "var(--ink)" }}>3. Tính điểm & Hoàn thành:</strong>
+                      <ul style={{ margin: "4px 0 0 14px", padding: 0, listStyleType: "disc", opacity: 0.85 }}>
+                        <li>Hệ thống tự động ưu tiên quét xem vị trí bấm có trúng <strong>vùng đáp án đúng</strong> hay không (bất kể vị trí lớp vẽ).</li>
+                        <li>Hết thời gian hoặc khi tất cả người chơi hoàn thành lượt bấm, game sẽ công bố kết quả và cộng/trừ xu tự động.</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
