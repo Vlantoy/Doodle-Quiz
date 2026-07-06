@@ -1,10 +1,9 @@
 # noob.md — Cute Quiz PvP
 
 ## Rules
-- Monorepo npm workspaces: `apps/web` (Next.js 14 App Router, "use client") + `apps/server` (Express + Zod + vitest, ESM `"type": "module"`).
-- Test server: `cd apps/server && npx vitest run` → kỳ vọng 25/25 pass (game.test.js 22 + utils.test.js 3).
-- Dev: `npm run dev:server` (Express, watch mode) và `npm run dev:web` (Next dev). Chạy ở 2 terminal riêng.
-- Build all: `npm run build` (web + server). Start prod server: `npm start`.
+- KIẾN TRÚC ĐÃ ĐỔI: chỉ còn workspace `apps/web` (Next.js 14 App Router). KHÔNG còn `apps/server` — root package.json chỉ có scripts `dev`/`dev:web`/`build`/`test`. `npm run dev:server` KHÔNG tồn tại.
+- Backend giờ là Supabase-direct hoặc mock mode (localStorage) — xem `apps/web/src/lib/api.js` + `lib/supabaseClient.js` (`isMockMode`). Không có Express server để chạy.
+- Dev: `npm run dev:web` (Next dev, port 3000, tự nhảy 3001 nếu bận). Build: `npm run build`.
 - Server LÀ authority chấm điểm. Client KHÔNG BAO GIỜ gửi `isWin`; chỉ gửi `{click:{rx,ry}, gaugeValue, completionMs, bet, playerToken}`. Server re-hit-test bằng `hitTestQuestion` trên payload gốc.
 - Mọi tọa độ qua mạng dùng ratio `[0,1]` (rx/ry, x_ratio/w_ratio, points_ratio). KHÔNG gửi pixel — zoom/pan client/server không đồng bộ pixel.
 - `submitRoundSchema` BẮT BUỘC `bet: int ≥ 1`. Client phải clamp `Math.max(1, Math.min(balance, bet))` trước khi submit, nếu không server trả 400.
@@ -33,5 +32,6 @@
 - Supabase optional: nếu set `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` thì lưu lịch sử room, không thì in-memory.
 - Deploy: web → Vercel/Netlify (set `NEXT_PUBLIC_API_BASE_URL`). Server → Railway/Render/Fly (set `SERVER_SECRET`, `PORT`, `CORS_ORIGIN`, optional Supabase env).
 - Windows dev: `run_command` chạy PowerShell — dùng `;` thay `&&` để chain lệnh.
+- localStorage per-origin: drafts/user lưu theo origin — `localhost:3000` ≠ `localhost:3001`. Nếu Next nhảy port thì draft "biến mất" (thực ra vẫn nằm ở origin cũ). Luôn kill process chiếm 3000 trước khi dev (`Get-NetTCPConnection -LocalPort 3000 -State Listen` → `Stop-Process -Id <pid> -Force`).
 - Phase room (client): `lobby` → `active` → `won_waiting`/`submitting` → `results` → loop hoặc `bankrupt`.
 - Host xem như presenter, `canvasDisabled` khi `isHost === true` — host không click canvas.

@@ -155,6 +155,13 @@ const BLOCK_PALETTE = [
     description: "Click canvas to place a numerical slider or custom list",
     color: "#f3f4f6",
   },
+  {
+    mode: "place-blank",
+    icon: "✏️",
+    label: "Chỗ trống (Blank)",
+    description: "Click canvas to place a Fill-in-the-Blank input field",
+    color: "#fef3c7",
+  },
 ];
 
 function newQuestion() {
@@ -642,6 +649,7 @@ export default function CreatePage() {
 
   // Wrapper function to intercept updates and push to the history stack
   function setQuestions(newQuestionsOrUpdater) {
+    isDirtyRef.current = true;
     _setQuestions(prev => {
       const next = typeof newQuestionsOrUpdater === "function" ? newQuestionsOrUpdater(prev) : newQuestionsOrUpdater;
       
@@ -716,6 +724,36 @@ export default function CreatePage() {
   const [showDrafts,       setShowDrafts]       = useState(false);
   const [savedDrafts,      setSavedDrafts]      = useState([]);
   const [showHelp,         setShowHelp]         = useState(false);
+
+  const skipAutoSaveRef = useRef(false);
+  const isDirtyRef = useRef(false);
+
+  useEffect(() => {
+    if (!draftId || questions.length === 0) return;
+    
+    if (skipAutoSaveRef.current) {
+      skipAutoSaveRef.current = false;
+      isDirtyRef.current = false;
+      return;
+    }
+
+    if (!isDirtyRef.current) return;
+
+    const timer = setTimeout(() => {
+      saveDraft({ id: draftId, title, questions, roundDurationSec, createdAt: Date.now() });
+      console.log("[DEBUG] Auto-saved draft:", draftId);
+      setMsg("⚡ Auto-saved!");
+      setSavedDrafts(listDrafts());
+      isDirtyRef.current = false;
+      
+      const msgTimer = setTimeout(() => {
+        setMsg("");
+      }, 2000);
+      return () => clearTimeout(msgTimer);
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [title, questions, roundDurationSec, draftId]);
 
   const [showQuickPaste,   setShowQuickPaste]   = useState(false);
   const [quickPasteText,   setQuickPasteText]   = useState("");
@@ -1043,8 +1081,9 @@ export default function CreatePage() {
 
   // -- Persist / host -----------------------------------------------------------
   function saveToDraft() {
+    isDirtyRef.current = false;
     saveDraft({ id: draftId, title, questions, roundDurationSec, createdAt: Date.now() });
-    setMsg("?? Saved!");
+    setMsg("💾 Saved!");
     setTimeout(() => setMsg(""), 2500);
   }
 
@@ -1054,13 +1093,14 @@ export default function CreatePage() {
   }
 
   function loadDraft(d) {
+    skipAutoSaveRef.current = true;
     setTitle(d.title);
     setQuestions(d.questions.map(item => ({ ...item })));
     setRoundDurationSec(d.roundDurationSec ?? 20);
     setDraftId(d.id);
     setSelectedIdx(0);
     setShowDrafts(false);
-    setMsg(`?? Loaded "${d.title}"`);
+    setMsg(`📂 Loaded "${d.title}"`);
     setTimeout(() => setMsg(""), 2500);
   }
 
@@ -1121,6 +1161,7 @@ export default function CreatePage() {
       : type === "TEXT_BLOCK"         ? "📝 Text"
       : type === "ANSWER_BLOCK"       ? "📦 Answer"
       : type === "GAUGE_BLOCK"        ? "📊 Gauge"
+      : type === "BLANK_BLOCK"        ? "✏️ Blank"
       : type === "FREEFORM_ZONE"      ? "🔷 Poly Zone"
       : type === "IMAGE_BLOCK"        ? "🖼️ Image"
       : type === "DRAWING_STROKE"     ? "🖌️ Stroke"
@@ -1197,12 +1238,12 @@ export default function CreatePage() {
           {/* Quiz Settings */}
           <section style={{ padding: "10px 12px", borderBottom: "2px solid #e5e0d8" }}>
             <div style={{ fontSize: "0.72rem", fontWeight: "bold", opacity: 0.5, marginBottom: 6, letterSpacing: "0.06em" }}>⚙️ QUIZ SETTINGS</div>
-            <input className="input" placeholder="Quiz title" value={title} onChange={e => setTitle(e.target.value)}
+            <input className="input" placeholder="Quiz title" value={title} onChange={e => { setTitle(e.target.value); isDirtyRef.current = true; }}
               style={{ marginBottom: 6, padding: "6px 10px", fontSize: "0.9rem" }} />
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <span style={{ fontSize: "0.82rem", opacity: 0.7, whiteSpace: "nowrap" }}>Duration</span>
               <input className="input" type="number" min={5} max={180} value={roundDurationSec}
-                onChange={e => setRoundDurationSec(Number(e.target.value))}
+                onChange={e => { setRoundDurationSec(Number(e.target.value)); isDirtyRef.current = true; }}
                 style={{ width: 64, padding: "5px 8px", fontSize: "0.88rem" }} />
               <span style={{ fontSize: "0.82rem", opacity: 0.7 }}>s</span>
             </div>
@@ -1768,6 +1809,34 @@ export default function CreatePage() {
                         </div>
                       )}
 
+                      {el.type === "BLANK_BLOCK" && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+                          <label style={{ fontSize: "0.75rem", display: "block" }}>
+                            Gợi ý (Placeholder):
+                            <input className="input" type="text" value={el.placeholder ?? ""}
+                              style={{ padding: "3px 6px", fontSize: "0.82rem", width: "100%", boxSizing: "border-box" }}
+                              onChange={e => patchElement(el.id, { placeholder: e.target.value })} />
+                          </label>
+
+                          <label style={{ fontSize: "0.75rem", display: "block" }}>
+                            Đáp án đúng (ngăn cách bằng dấu phẩy):
+                            <input className="input" type="text" value={el.correctText ?? ""}
+                              placeholder="Ví dụ: Hà Nội, Hanoi, ha noi"
+                              style={{ padding: "3px 6px", fontSize: "0.82rem", width: "100%", boxSizing: "border-box" }}
+                              onChange={e => patchElement(el.id, { correctText: e.target.value })} />
+                          </label>
+
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+                            <span style={{ fontSize: "0.78rem", opacity: 0.7 }}>Cỡ chữ:</span>
+                            <input type="range" min={0.4} max={4.0} step={0.1}
+                              value={el.fontSizeScale ?? 1.0}
+                              onChange={e => patchElement(el.id, { fontSizeScale: parseFloat(e.target.value) })}
+                              style={{ flex: 1, accentColor: "#7c3aed" }} />
+                            <span style={{ fontSize: "0.78rem", minWidth: 32 }}>{(el.fontSizeScale ?? 1.0).toFixed(1)}x</span>
+                          </div>
+                        </div>
+                      )}
+
                       {(el.type === "FREEFORM_ZONE" || el.type === "PRECISION_TARGET") && (
                         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                           {el.type === "FREEFORM_ZONE" && (
@@ -1816,6 +1885,7 @@ export default function CreatePage() {
                 {canvasMode === "place-text"    && " — Click to drop Text Block"}
                 {canvasMode === "place-answer"  && " — Click to drop Answer Block"}
                 {canvasMode === "place-gauge"   && " — Click to drop Gauge / Ruler"}
+                {canvasMode === "place-blank"   && " — Click to drop Blank Input Block"}
               </span>
             </div>
 

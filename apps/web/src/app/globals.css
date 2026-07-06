@@ -227,6 +227,12 @@ textarea {
   }
 }
 
+/* Question popup when obstacle gets close (runner mode) */
+@keyframes question-pop-in {
+  from { opacity: 0; transform: translateY(28px) scale(0.92); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* Podium Styles */
 .podium-container {
   display: flex;

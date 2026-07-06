@@ -20,6 +20,33 @@ export default function HomePage() {
     healthCheck().then(() => setApiStatus("online")).catch(() => setApiStatus("offline"));
     // Clean up stale rooms/players left from crashed sessions
     cleanupStaleData();
+
+    // Expose window.toandz() to console
+    window.toandz = () => {
+      const current = localStorage.getItem("cutequiz:admin_mode") === "true";
+      const next = !current;
+      localStorage.setItem("cutequiz:admin_mode", next ? "true" : "false");
+      console.log(`[SYSTEM] Admin Mode (Slideshow) ${next ? "ENABLED" : "DISABLED"}`);
+      alert(`[SYSTEM] Admin Mode (Slideshow) ${next ? "ENABLED" : "DISABLED"}`);
+    };
+
+    let keyBuffer = "";
+    function handleKeyDown(e) {
+      if (["Shift", "Control", "Alt", "Meta", "CapsLock"].includes(e.key)) {
+        return;
+      }
+      keyBuffer = (keyBuffer + e.key).slice(-15);
+      if (keyBuffer.includes("toandz")) {
+        window.toandz();
+        keyBuffer = "";
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      delete window.toandz;
+    };
   }, []);
 
   function continueToRoom() {

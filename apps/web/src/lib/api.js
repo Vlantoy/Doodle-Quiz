@@ -142,8 +142,9 @@ export async function hostRoom(payload) {
 }
 
 export async function joinRoom(payload) {
-  // payload: { roomCode, playerId, username }
+  // payload: { roomCode, playerId, username, avatarSeed }
   const roomCode = String(payload.roomCode).toUpperCase();
+  const avatarSeed = payload.avatarSeed || "1";
   
   if (isMockMode) {
     const rooms = JSON.parse(localStorage.getItem("cutequiz:mock_rooms") || "[]");
@@ -158,7 +159,7 @@ export async function joinRoom(payload) {
         roomCode,
         playerId: payload.playerId,
         seatIndex: 0,
-        avatarSeed: "P",
+        avatarSeed: existing.avatar_seed || "1",
         playerToken: "mock-player-token",
         rejoined: true
       };
@@ -168,6 +169,7 @@ export async function joinRoom(payload) {
       id: payload.playerId,
       room_code: roomCode,
       username: payload.username,
+      avatar_seed: avatarSeed,
       balance: 10,
       is_bankrupt: false,
       last_submitted_round: -1,
@@ -201,7 +203,7 @@ export async function joinRoom(payload) {
       roomCode,
       playerId: payload.playerId,
       seatIndex: 0,
-      avatarSeed: "P",
+      avatarSeed: existing.avatar_seed || "1",
       playerToken: "supabase-player-token",
       rejoined: true
     };
@@ -212,6 +214,7 @@ export async function joinRoom(payload) {
     id: payload.playerId,
     room_code: roomCode,
     username: payload.username,
+    avatar_seed: avatarSeed,
     balance: 10,
     is_bankrupt: false,
     last_submitted_round: -1
@@ -223,7 +226,7 @@ export async function joinRoom(payload) {
     roomCode,
     playerId: payload.playerId,
     seatIndex: 0,
-    avatarSeed: "P",
+    avatarSeed: avatarSeed,
     playerToken: "supabase-player-token",
     rejoined: false
   };
@@ -255,7 +258,7 @@ export async function getBootstrap(roomCode) {
       players: roomPlayers.map(p => ({
         player_id: p.id,
         username: p.username,
-        avatar_seed: "P",
+        avatar_seed: p.avatar_seed || "1",
         seat_index: 0,
         balance: p.balance,
         is_bankrupt: p.is_bankrupt,
@@ -297,7 +300,7 @@ export async function getBootstrap(roomCode) {
     players: (players || []).map(p => ({
       player_id: p.id,
       username: p.username,
-      avatar_seed: "P",
+      avatar_seed: p.avatar_seed || "1",
       seat_index: 0,
       balance: p.balance,
       is_bankrupt: p.is_bankrupt,

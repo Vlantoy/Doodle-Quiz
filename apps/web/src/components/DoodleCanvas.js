@@ -694,6 +694,8 @@ export default function DoodleCanvas({
   selectedShapeIsFilled = false,
   selectedShapeStrokeWidth = 3,
   style = {},
+  blankAnswers = {},
+  onBlankChange,
 }) {
   const containerRef = useRef(null);
   const svgRef       = useRef(null);
@@ -1479,8 +1481,8 @@ export default function DoodleCanvas({
       }
     }
 
-    // ── Place TEXT_BLOCK, ANSWER_BLOCK, or GAUGE_BLOCK ───────────────────────
-    if (isCreator && (creatorMode === "place-text" || creatorMode === "place-answer" || creatorMode === "place-gauge") && !hasMoved.current) {
+    // ── Place TEXT_BLOCK, ANSWER_BLOCK, GAUGE_BLOCK, or BLANK_BLOCK ──────────
+    if (isCreator && (creatorMode === "place-text" || creatorMode === "place-answer" || creatorMode === "place-gauge" || creatorMode === "place-blank") && !hasMoved.current) {
       // §3 inverse matrix: undo pan + scale before ratio conversion
       const { rx, ry } = getHitCoords(e.clientX, e.clientY);
       const s = scaleRef.current;
@@ -1503,6 +1505,18 @@ export default function DoodleCanvas({
           correctValue: "50",
           currentValue: "50",
           color: "#7c3aed",
+        }]);
+      } else if (creatorMode === "place-blank") {
+        commitElements([...liveElements, {
+          id: randomUUID(),
+          type: "BLANK_BLOCK",
+          placeholder: "Nhập...",
+          correctText: "",
+          x_ratio: rx - (0.11 / s),
+          y_ratio: ry - (0.05 / s),
+          w_ratio: 0.22 / s,
+          h_ratio: 0.10 / s,
+          fontSizeScale: 1.0,
         }]);
       } else {
         const isAnswer = creatorMode === "place-answer";
@@ -1865,6 +1879,7 @@ export default function DoodleCanvas({
     : isCreator && creatorMode === "draw-freeform" ? "crosshair"
     : isCreator && creatorMode === "draw-brush"    ? "crosshair"
     : isCreator && creatorMode === "place-text"    ? "text"
+    : isCreator && creatorMode === "place-blank"   ? "text"
     : isCreator && creatorMode === "place-answer"  ? "cell"
     : isCreator && creatorMode === "place-shape"   ? "crosshair"
     : isCreator && creatorMode === "place-gauge"   ? "pointer"
@@ -1874,7 +1889,7 @@ export default function DoodleCanvas({
   // §1 Z-index array: render in forward order (index 0 = bottom, last = top)
   // TEXT_BLOCK, ANSWER_BLOCK, IMAGE_BLOCK rendered as DOM; DRAWING_STROKE in SVG; zones SVG-only
   const domBlocks = liveElements.filter(el =>
-    el.type === "TEXT_BLOCK" || el.type === "ANSWER_BLOCK" || el.type === "IMAGE_BLOCK" || el.type === "GAUGE_BLOCK"
+    el.type === "TEXT_BLOCK" || el.type === "ANSWER_BLOCK" || el.type === "IMAGE_BLOCK" || el.type === "GAUGE_BLOCK" || el.type === "BLANK_BLOCK"
   );
 
   return (
@@ -1949,7 +1964,7 @@ export default function DoodleCanvas({
         {domBlocks.map((el, arrayIdx) => {
           const isSelected = isCreator && el.id === selectedElemId;
           const elementIdx = liveElements.indexOf(el);
-          const isText = el.type === "TEXT_BLOCK" || el.type === "ANSWER_BLOCK";
+          const isText = el.type === "TEXT_BLOCK" || el.type === "ANSWER_BLOCK" || el.type === "BLANK_BLOCK";
           const scaleFactor = Math.max(0.0001, isText
             ? (0.028 * (el.fontSizeScale ?? 1.0) * canvasWidth) / 40
             : 1.0);
@@ -1981,7 +1996,7 @@ export default function DoodleCanvas({
               touchAction: "none",
               pointerEvents: (isCreator && creatorMode !== "pan")
                 ? "none"
-                : (el.type === "ANSWER_BLOCK" || isCreator || el.isMovableByPlayer)
+                : (el.type === "ANSWER_BLOCK" || el.type === "BLANK_BLOCK" || isCreator || el.isMovableByPlayer)
                 ? "auto"
                 : "none",
               boxSizing: "border-box",
@@ -1989,7 +2004,7 @@ export default function DoodleCanvas({
               display: "flex", alignItems: "center", justifyContent: "center",
               textAlign: "center",
               // IMAGE_BLOCK and GAUGE_BLOCK use fixed height; text blocks use minHeight to allow wrapping
-              ...((el.type === "IMAGE_BLOCK" || el.type === "GAUGE_BLOCK")
+              ...((el.type === "IMAGE_BLOCK" || el.type === "GAUGE_BLOCK" || el.type === "BLANK_BLOCK")
                 ? { height: `${el.h_ratio * 100}%` }
                 : { minHeight: `${el.h_ratio * 100}%` }),
             }}
@@ -2070,6 +2085,66 @@ export default function DoodleCanvas({
                   setGaugeValue(val);
                 }}
               />
+            ) : el.type === "BLANK_BLOCK" ? (
+              isCreator ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: "50%",
+                    width: `${90 / scaleFactor}%`,
+                    transform: `translate(-50%, -50%) scale(${scaleFactor})`,
+                    transformOrigin: "center center",
+                    zIndex: 2,
+                    border: "2.5px dashed #94a3b8",
+                    borderRadius: 12,
+                    background: "#fffaf0",
+                    padding: "6px 12px",
+                    fontFamily: "Patrick Hand, cursive",
+                    fontSize: "24px",
+                    lineHeight: "1.2",
+                    textAlign: "center",
+                    color: "#475569",
+                    boxShadow: "2px 2px 0 rgba(0,0,0,0.05)",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  ✍️ [{el.placeholder || "..."}]
+                  <span style={{ fontSize: "14px", display: "block", opacity: 0.75, marginTop: 4 }}>
+                    🔑: {el.correctText || "(chưa đặt)"}
+                  </span>
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  placeholder={el.placeholder || "Nhập..."}
+                  value={blankAnswers?.[el.id] || ""}
+                  onChange={e => onBlankChange?.(el.id, e.target.value)}
+                  disabled={disabled}
+                  onPointerDown={e => e.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: "50%",
+                    width: `${90 / scaleFactor}%`,
+                    transform: `translate(-50%, -50%) scale(${scaleFactor})`,
+                    transformOrigin: "center center",
+                    zIndex: 2,
+                    border: "2.5px dashed #7c3aed",
+                    borderRadius: 12,
+                    background: "#fffaf0",
+                    padding: "6px 12px",
+                    fontFamily: "Patrick Hand, cursive",
+                    fontSize: "30px",
+                    lineHeight: "1.2",
+                    textAlign: "center",
+                    color: "#2f2a3c",
+                    boxShadow: "4px 4px 0 rgba(0,0,0,0.1)",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              )
             ) : editingTextId === el.id ? (
               /* Inline textarea edit */
               <textarea
