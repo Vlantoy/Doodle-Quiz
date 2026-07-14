@@ -474,7 +474,47 @@ function parseAiGeneratedQuestions(text) {
   return parsedQuestions;
 }
 
-const makePrompt = (count, difficulty, cognitiveLevel) => {
+const makePrompt = (count, difficulty, cognitiveLevel, lang) => {
+  if (lang === "en") {
+    return `You are an expert exam designer and knowledge assessor.
+
+Task:
+* Carefully read the entire document I provide.
+* Only use information that appears in the document.
+* Do not add external knowledge.
+* Do not speculate or make up content.
+
+Question generation requirements:
+1. Create exactly ${count} multiple-choice questions with 4 options (A, B, C, D).
+2. Each question has exactly 1 correct answer.
+3. Distractors must be reasonable and plausible for learners who do not have a deep understanding.
+4. Prioritize checking understanding of principles, distinction of concepts, and application rather than rote memorization.
+5. Desired difficulty: ${difficulty}
+6. Desired cognitive level: ${cognitiveLevel}
+8. QUESTION AND OPTION LENGTH MUST BE MODERATE AND CONCISE:
+   * Questions should be short, direct, and concise (avoid wordiness, maximum 2 lines of text).
+   * Options (A, B, C, D) must be extremely short, readable, and concise (maximum 1 line or under 15 words for each option). Absolutely no long explanations or complex compound sentences inside options.
+
+For each question, output EXACTLY in the following format (do not write any introductory or concluding text, do not insert other markdown code blocks, separate each question with a dashed line '---------------'):
+
+Question 1:
+[Question prompt displays here]
+
+A. [Option A]
+B. [Option B]
+C. [Option C]
+D. [Option D]
+
+Correct answer: [A/B/C/D]
+---------------
+Question 2:
+...
+
+After creation:
+* Double-check each question to make sure the correct answer is indeed correct.
+* Verify there is no case of multiple correct answers.`;
+  }
+
   return `Bạn là chuyên gia thiết kế đề thi và đánh giá kiến thức.
 
 Nhiệm vụ:
@@ -939,7 +979,7 @@ export default function CreatePage() {
           fileData = { mimeType: "text/plain", text: chunk.text };
         }
         
-        const prompt = makePrompt(count, aiDifficulty, aiCognitive);
+        const prompt = makePrompt(count, aiDifficulty, aiCognitive, lang);
         const aiResponse = await callGeminiAPIWithRetry(prompt, fileData);
         
         const parsed = parseAiGeneratedQuestions(aiResponse);
