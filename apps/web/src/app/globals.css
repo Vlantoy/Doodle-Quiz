@@ -95,7 +95,7 @@ textarea {
   border: 2px solid var(--ink);
   border-radius: 14px;
   padding: 10px 14px;
-  font-family: "Short Stack", cursive;
+  font-family: "Itim", cursive;
   font-size: 0.95rem;
   background: var(--mint);
   cursor: pointer;
@@ -323,7 +323,7 @@ textarea {
   height: 85px;
 }
 .podium-name {
-  font-family: "Short Stack", cursive;
+  font-family: "Itim", cursive;
   font-weight: bold;
   font-size: 1.15rem;
   overflow: hidden;

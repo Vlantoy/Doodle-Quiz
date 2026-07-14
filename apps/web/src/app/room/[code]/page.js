@@ -8,6 +8,7 @@ import { getOrCreateUser, saveUser, saveRoomState, getRoomState } from "lib/stor
 import { supabase, isMockMode } from "lib/supabaseClient";
 
 import DoodleCanvas from "components/DoodleCanvas";
+import { useI18n } from "components/I18nProvider";
 
 /*
   Phase lifecycle per round:
@@ -771,6 +772,7 @@ const SANDBOX_STATES = [
 export default function RoomPage({ params }) {
   const roomCode = String(params.code || "").toUpperCase();
   const router = useRouter();
+  const { lang, setLang, t } = useI18n();
   const [user, setUser] = useState(null);
   const hostSecret = typeof window !== "undefined" ? (getRoomState(roomCode)?.hostSecret ?? null) : null;
 
@@ -2113,30 +2115,40 @@ export default function RoomPage({ params }) {
             <article className="card grid" style={{ gap: 10, padding: "12px 14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                 <h2 className="title" style={{ fontSize: "1.4rem", margin: 0 }}>
-                  Room <span style={{ color: "#ff8f9f" }}>{roomCode}</span>
+                  {t("quiz_room")} <span style={{ color: "#ff8f9f" }}>{roomCode}</span>
                 </h2>
-                <button type="button" onClick={handleLeave} className="btn secondary" style={{ padding: "4px 10px", fontSize: "0.85rem" }}>Leave</button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    style={{ padding: "4px 10px", fontSize: "0.85rem" }}
+                    onClick={() => setLang(lang === "en" ? "vi" : "en")}
+                  >
+                    {t("lang_btn")}
+                  </button>
+                  <button type="button" onClick={handleLeave} className="btn secondary" style={{ padding: "4px 10px", fontSize: "0.85rem" }}>{t("leave")}</button>
+                </div>
               </div>
 
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {room?.round_deadline_at && <span className="badge">⏱ {(remainingMs / 1000).toFixed(1)}s</span>}
                 {room?.round_deadline_at && <span className="badge">Q {(room?.current_round_index ?? 0) + 1}/{totalQ || "?"}</span>}
-                {!isHost && <span className="badge">💰 {myBalance} coins</span>}
+                {!isHost && <span className="badge">💰 {myBalance} {t("coins_unit")}</span>}
                 {isHost && <span className="badge" style={{ background: "#c6f7e2" }}>HOST 👑</span>}
-                {!isHost && isBankrupt && <span className="badge" style={{ background: "#ff6b6b", color: "white" }}>BANKRUPT</span>}
+                {!isHost && isBankrupt && <span className="badge" style={{ background: "#ff6b6b", color: "white" }}>{t("bankrupt_title")}</span>}
               </div>
 
               {/* Only show question section after quiz has started */}
               {!(phase === "lobby" && !room?.round_deadline_at) && (
                 <div style={{ borderTop: "2px dashed #ccc", paddingTop: 8, marginTop: 4 }}>
                   <h3 style={{ fontSize: "0.95rem", margin: "0 0 6px", color: "var(--ink)", fontFamily: "Fredoka, sans-serif" }}>
-                    🎯 Câu hỏi:
+                    🎯 {t("question_label")}:
                   </h3>
                   <p style={{ margin: 0, fontSize: "0.95rem", fontWeight: "bold", lineHeight: 1.4 }}>
                     {isHost ? (
                       phase === "lobby" ? `📢 Quiz Set: ${room?.quiz_payload?.title || "Untitled"}` : (question?.prompt || "Active Round")
                     ) : (
-                      phase === "lobby" ? "⏳ Waiting for host to start a round..." : (question?.prompt || "⏳ Waiting for host to start a round...")
+                      phase === "lobby" ? t("waiting_host") : (question?.prompt || t("waiting_host"))
                     )}
                   </p>
 
@@ -2149,10 +2161,10 @@ export default function RoomPage({ params }) {
                         disabled={activeQuestionIndex === 0}
                         onClick={() => setReviewQuestionIndex(activeQuestionIndex - 1)}
                       >
-                        ◀ Trước
+                        ◀ {t("prev")}
                       </button>
                       <span style={{ fontSize: "0.85rem", fontFamily: "Fredoka, sans-serif", fontWeight: "bold" }}>
-                        Câu {activeQuestionIndex + 1}/{totalQ}
+                        {t("question_label")} {activeQuestionIndex + 1}/{totalQ}
                       </span>
                       <button
                         type="button"
@@ -2161,7 +2173,7 @@ export default function RoomPage({ params }) {
                         disabled={activeQuestionIndex === totalQ - 1}
                         onClick={() => setReviewQuestionIndex(activeQuestionIndex + 1)}
                       >
-                        Sau ▶
+                        {t("next")} ▶
                       </button>
                     </div>
                   )}
@@ -2172,17 +2184,17 @@ export default function RoomPage({ params }) {
             {/* Host Controls for Lobby & Results */}
             {isHost && (phase === "lobby" || phase === "results") && (
               <div className="card" style={{ background: "#fff8e8", border: "2px dashed #2f2a3c", padding: "10px 12px" }}>
-                <h4 style={{ margin: "0 0 6px", fontSize: "1.05rem" }}>👑 Host Controls</h4>
+                <h4 style={{ margin: "0 0 6px", fontSize: "1.05rem" }}>👑 {t("host_controls")}</h4>
                 {phase === "lobby" && !room?.round_deadline_at && (
                   <button type="button" className="btn" style={{ width: "100%" }} onClick={hostStartQuiz} disabled={!room}>
-                    {!room ? "⏳ Loading..." : "🚀 Start Quiz"}
+                    {!room ? "⏳ Loading..." : t("start_quiz_btn")}
                   </button>
                 )}
                 {phase === "results" && room?.current_round_index + 1 < totalQ && (
-                  <p style={{ margin: 0, opacity: 0.8, fontSize: "0.85rem" }}>Next round will start automatically in {autoSec}s...</p>
+                  <p style={{ margin: 0, opacity: 0.8, fontSize: "0.85rem" }}>{t("next_round_auto").replace("{sec}", autoSec)}</p>
                 )}
                 {phase === "results" && room?.current_round_index + 1 >= totalQ && (
-                  <p style={{ margin: 0, opacity: 0.8, fontSize: "0.85rem" }}>Quiz completed! Spectate the final leaderboard.</p>
+                  <p style={{ margin: 0, opacity: 0.8, fontSize: "0.85rem" }}>{t("quiz_completed_spectate")}</p>
                 )}
               </div>
             )}
@@ -2190,11 +2202,11 @@ export default function RoomPage({ params }) {
             {/* Player Lobby/Results Status */}
             {!isHost && (phase === "lobby" || phase === "results") && !isBankrupt && (
               <div className="card" style={{ background: "#f3f4f6", border: "2px dashed #ccc", padding: "10px 12px" }}>
-                <h4 style={{ margin: "0 0 4px", fontSize: "1.05rem" }}>⏳ Status</h4>
+                <h4 style={{ margin: "0 0 4px", fontSize: "1.05rem" }}>⏳ {t("status")}</h4>
                 {phase === "lobby" ? (
-                  <p style={{ margin: 0, opacity: 0.7, fontSize: "0.85rem" }}>Waiting for host to start the quiz...</p>
+                  <p style={{ margin: 0, opacity: 0.7, fontSize: "0.85rem" }}>{t("waiting_host_to_start")}</p>
                 ) : (
-                  <p style={{ margin: 0, opacity: 0.7, fontSize: "0.85rem" }}>Round ended. Waiting for next question...</p>
+                  <p style={{ margin: 0, opacity: 0.7, fontSize: "0.85rem" }}>{t("round_ended_waiting")}</p>
                 )}
               </div>
             )}
@@ -2434,7 +2446,7 @@ export default function RoomPage({ params }) {
             padding: "24px 20px"
           }}>
             <h2 style={{ fontFamily: "Itim, cursive", margin: 0, fontSize: "1.7rem" }}>
-              Thiết lập Nhân vật 🎨
+              {t("setup_character")}
             </h2>
             
             {/* Avatar Preview */}
@@ -2462,7 +2474,7 @@ export default function RoomPage({ params }) {
             <input
               type="text"
               className="input"
-              placeholder="Biệt danh của bạn..."
+              placeholder={t("enter_name_placeholder")}
               required
               value={usernameInput}
               onChange={e => setUsernameInput(e.target.value)}
@@ -2472,7 +2484,7 @@ export default function RoomPage({ params }) {
             />
 
             <p style={{ margin: "4px 0 2px", fontWeight: "bold", fontSize: "0.9rem", color: "#7c3aed", textAlign: "left" }}>
-              👉 Chọn con vật đại diện của bạn (36 lựa chọn):
+              {t("choose_avatar_desc")}
             </p>
 
             {/* Character grid */}
@@ -2523,7 +2535,7 @@ export default function RoomPage({ params }) {
             </div>
 
             <button type="submit" className="btn" style={{ fontSize: "1.1rem", marginTop: 6 }}>
-              Vào phòng chơi 🚀
+              {t("enter_match")} 🚀
             </button>
           </form>
         </div>

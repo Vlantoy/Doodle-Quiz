@@ -8,6 +8,7 @@ import { getOrCreateUser, saveUser, saveDraft, listDrafts, saveRoomState, random
 import DoodleCanvas from "components/DoodleCanvas";
 import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
+import { useI18n } from "components/I18nProvider";
 
 // -- Quick-Start Template Presets (spec �5) -------------------------------------
 // Static IDs only � no crypto.randomUUID() at module level (SSR safe)
@@ -640,6 +641,7 @@ function createQuestionFromParsed(parsed) {
 
 export default function CreatePage() {
   const router = useRouter();
+  const { lang, setLang, t } = useI18n();
 
   const [title,            setTitle]            = useState("My Brain Kingdom Quiz");
   const [roundDurationSec, setRoundDurationSec] = useState(20);
@@ -1182,8 +1184,8 @@ export default function CreatePage() {
         padding: "8px 16px", borderBottom: "3px solid #2f2a3c",
         background: "#fffaf0", flexWrap: "wrap",
       }}>
-        <span style={{ fontFamily: "Short Stack, cursive", fontSize: "1.1rem", fontWeight: "bold", whiteSpace: "nowrap" }}>
-          ✏️ Quiz Creator
+        <span style={{ fontFamily: "Itim, cursive", fontSize: "1.1rem", fontWeight: "bold", whiteSpace: "nowrap" }}>
+          ✏️ {t("editor_title")}
         </span>
         <span style={{ flex: 1 }} />
         {msg && (
@@ -1191,14 +1193,14 @@ export default function CreatePage() {
             {msg}
           </span>
         )}
-        <Link href="/" className="btn secondary" style={{ padding: "6px 12px", fontSize: "0.85rem" }}>← Back</Link>
-        <button type="button" className="btn" style={{ padding: "6px 12px", fontSize: "0.85rem" }} onClick={saveToDraft}>💾 Save</button>
+        <Link href="/" className="btn secondary" style={{ padding: "6px 12px", fontSize: "0.85rem" }}>← {t("back")}</Link>
+        <button type="button" className="btn" style={{ padding: "6px 12px", fontSize: "0.85rem" }} onClick={saveToDraft}>💾 {t("save")}</button>
 
         {/* Drafts dropdown */}
         <div style={{ position: "relative" }}>
           {showDrafts && <div onClick={() => setShowDrafts(false)} style={{ position: "fixed", inset: 0, zIndex: 998 }} />}
           <button type="button" className="btn secondary" style={{ padding: "6px 12px", fontSize: "0.85rem", position: "relative", zIndex: 999 }} onClick={openDrafts}>
-            📂 Drafts{savedDrafts.length > 0 && ` (${savedDrafts.length})`}
+            📂 {t("load_drafts")}{savedDrafts.length > 0 && ` (${savedDrafts.length})`}
           </button>
           {showDrafts && (
             <div style={{
@@ -1208,21 +1210,30 @@ export default function CreatePage() {
               boxShadow: "4px 4px 0 #0000002a",
             }}>
               {savedDrafts.length === 0 ? (
-                <p style={{ margin: 0, fontSize: "0.85rem", opacity: 0.6, padding: 4 }}>No saved drafts yet. Click 💾 Save to create one.</p>
+                <p style={{ margin: 0, fontSize: "0.85rem", opacity: 0.6, padding: 4 }}>{t("no_drafts_desc")}</p>
               ) : savedDrafts.map(d => (
                 <div key={d.id} style={{ display: "flex", gap: 6, alignItems: "center", padding: "6px 4px", borderBottom: "1px solid #e5e0d8" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: "0.88rem", fontWeight: "bold", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.title}</div>
                     <div style={{ fontSize: "0.7rem", opacity: 0.5 }}>{new Date(d.createdAt).toLocaleString()} · {d.questions?.length ?? 0}Q</div>
                   </div>
-                  <button type="button" className="btn" style={{ padding: "3px 10px", fontSize: "0.78rem", flexShrink: 0 }} onClick={() => loadDraft(d)}>Load</button>
+                  <button type="button" className="btn" style={{ padding: "3px 10px", fontSize: "0.78rem", flexShrink: 0 }} onClick={() => loadDraft(d)}>{t("load")}</button>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        <button type="button" className="btn warn" style={{ padding: "6px 12px", fontSize: "0.85rem" }} onClick={hostNow}>🚀 Host</button>
+        <button
+          type="button"
+          className="btn secondary"
+          style={{ padding: "6px 12px", fontSize: "0.85rem" }}
+          onClick={() => setLang(lang === "en" ? "vi" : "en")}
+        >
+          {t("lang_btn")}
+        </button>
+
+        <button type="button" className="btn warn" style={{ padding: "6px 12px", fontSize: "0.85rem" }} onClick={hostNow}>🚀 {t("host")}</button>
       </header>
 
       {/* ── BODY ── */}
@@ -1237,40 +1248,45 @@ export default function CreatePage() {
 
           {/* Quiz Settings */}
           <section style={{ padding: "10px 12px", borderBottom: "2px solid #e5e0d8" }}>
-            <div style={{ fontSize: "0.72rem", fontWeight: "bold", opacity: 0.5, marginBottom: 6, letterSpacing: "0.06em" }}>⚙️ QUIZ SETTINGS</div>
-            <input className="input" placeholder="Quiz title" value={title} onChange={e => { setTitle(e.target.value); isDirtyRef.current = true; }}
+            <div style={{ fontSize: "0.72rem", fontWeight: "bold", opacity: 0.5, marginBottom: 6, letterSpacing: "0.06em" }}>⚙️ {t("question_settings").toUpperCase()}</div>
+            <input className="input" placeholder={t("quiz_title_placeholder")} value={title} onChange={e => { setTitle(e.target.value); isDirtyRef.current = true; }}
               style={{ marginBottom: 6, padding: "6px 10px", fontSize: "0.9rem" }} />
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <span style={{ fontSize: "0.82rem", opacity: 0.7, whiteSpace: "nowrap" }}>Duration</span>
+              <span style={{ fontSize: "0.82rem", opacity: 0.7, whiteSpace: "nowrap" }}>{t("duration_label")}</span>
               <input className="input" type="number" min={5} max={180} value={roundDurationSec}
                 onChange={e => { setRoundDurationSec(Number(e.target.value)); isDirtyRef.current = true; }}
                 style={{ width: 64, padding: "5px 8px", fontSize: "0.88rem" }} />
-              <span style={{ fontSize: "0.82rem", opacity: 0.7 }}>s</span>
             </div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 8 }}>
-              {QUICK_TEMPLATES.map(t => (
-                <button key={t.id} type="button" className="btn" style={{ padding: "2px 8px", fontSize: "0.75rem" }} onClick={() => loadTemplate(t)}>
-                  {t.title}
-                </button>
-              ))}
+              {QUICK_TEMPLATES.map(tmpl => {
+                let localTitle = tmpl.title;
+                if (tmpl.id === "tpl-overlay-trap") localTitle = t("preset_overlay_trap");
+                else if (tmpl.id === "tpl-microscopic") localTitle = t("preset_microscopic");
+                else if (tmpl.id === "tpl-gauge") localTitle = t("preset_gauge");
+                return (
+                  <button key={tmpl.id} type="button" className="btn" style={{ padding: "2px 8px", fontSize: "0.75rem" }} onClick={() => loadTemplate(tmpl)}>
+                    {localTitle}
+                  </button>
+                );
+              })}
             </div>
           </section>
 
           {/* Questions */}
           <section style={{ padding: "10px 12px", borderBottom: "2px solid #e5e0d8" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <span style={{ fontSize: "0.72rem", fontWeight: "bold", opacity: 0.5, letterSpacing: "0.06em" }}>📋 QUESTIONS ({questions.length})</span>
-              <button type="button" className="btn" style={{ padding: "2px 8px", fontSize: "0.75rem" }} onClick={addQuestion}>+ Add</button>
+              <span style={{ fontSize: "0.72rem", fontWeight: "bold", opacity: 0.5, letterSpacing: "0.06em" }}>📋 {t("questions_list").toUpperCase()} ({questions.length})</span>
+              <button type="button" className="btn" style={{ padding: "2px 8px", fontSize: "0.75rem" }} onClick={addQuestion}>+ {lang === "vi" ? "Thêm" : "Add"}</button>
             </div>
             <button type="button" className="btn secondary"
               style={{ width: "100%", marginBottom: 8, padding: "6px 10px", fontSize: "0.82rem", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
               onClick={() => setShowQuickPaste(true)}>
-              ⚡ Nhập nhanh từ Template
+              ⚡ {t("quick_paste")}
             </button>
             <button type="button" className="btn"
               style={{ width: "100%", marginBottom: 8, padding: "6px 10px", fontSize: "0.82rem", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "#8b5cf6", color: "white" }}
               onClick={() => setShowAiGenerator(true)}>
-              🤖 Tạo câu hỏi bằng AI
+              {t("ai_creator")}
             </button>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {questions.map((item, idx) => (
@@ -1306,14 +1322,16 @@ export default function CreatePage() {
 
           {/* Tools palette */}
           <section style={{ padding: "10px 12px", borderBottom: "2px solid #e5e0d8" }}>
-            <div style={{ fontSize: "0.72rem", fontWeight: "bold", opacity: 0.5, marginBottom: 6, letterSpacing: "0.06em" }}>🧱 TOOLS</div>
+            <div style={{ fontSize: "0.72rem", fontWeight: "bold", opacity: 0.5, marginBottom: 6, letterSpacing: "0.06em" }}>{t("tools_header")}</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4 }}>
               {BLOCK_PALETTE.map(item => {
                 const isActive = item.mode === "draw-target"
                   ? (canvasMode === "draw-target" || canvasMode === "draw-freeform")
                   : canvasMode === item.mode;
+                const label = t(`palette_${item.mode}_label`) || item.label;
+                const description = t(`palette_${item.mode}_desc`) || item.description;
                 return (
-                  <button key={item.mode} type="button" title={item.description}
+                  <button key={item.mode} type="button" title={description}
                     onClick={() => {
                       if (item.mode === "draw-target") {
                         setCanvasMode(zoneDrawType === "rectangle" ? "draw-target" : "draw-freeform");
@@ -1333,7 +1351,7 @@ export default function CreatePage() {
                     }}
                   >
                     <span style={{ fontSize: "1.25rem" }}>{item.icon}</span>
-                    <span style={{ textAlign: "center" }}>{item.label.split(" /")[0].split(" (")[0]}</span>
+                    <span style={{ textAlign: "center" }}>{label}</span>
                     {isActive && <span style={{ fontSize: "0.55rem", color: "#065f46" }}>●</span>}
                   </button>
                 );

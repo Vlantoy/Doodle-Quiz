@@ -1,4 +1,5 @@
 import "./globals.css";
+import { I18nProvider } from "../components/I18nProvider";
 
 export const metadata = {
   title: "Brain Kingdom",
@@ -8,7 +9,11 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <I18nProvider>
+          {children}
+        </I18nProvider>
+      </body>
     </html>
   );
 }

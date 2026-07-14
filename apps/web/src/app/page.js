@@ -6,13 +6,14 @@ import { useRouter } from "next/navigation";
 import { getOrCreateUser, saveUser } from "lib/storage";
 import { healthCheck, cleanupStaleData } from "lib/api";
 import { isMockMode } from "lib/supabaseClient";
-
+import { useI18n } from "components/I18nProvider";
 
 export default function HomePage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [roomCode, setRoomCode] = useState("");
   const [apiStatus, setApiStatus] = useState("checking");
+  const { lang, setLang, t } = useI18n();
 
   useEffect(() => {
     const user = getOrCreateUser();
@@ -70,36 +71,48 @@ export default function HomePage() {
 
   return (
     <main className="app-shell grid" style={{ gap: 22 }}>
+      {/* Floating Language Toggle */}
+      <div style={{ display: "flex", justifyContent: "flex-end", margin: "-10px 0" }}>
+        <button
+          type="button"
+          className="btn secondary"
+          style={{ padding: "5px 12px", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: 5 }}
+          onClick={() => setLang(lang === "en" ? "vi" : "en")}
+        >
+          {t("lang_btn")}
+        </button>
+      </div>
+
       <section className="card">
-        <h1 className="title">Brain Kingdom</h1>
-        <p className="subtitle">Local-first trap puzzles, one-way REST sync, and cute chaos.</p>
+        <h1 className="title">{t("game_title")}</h1>
+        <p className="subtitle">{t("game_subtitle")}</p>
       </section>
 
       <section className="grid grid-2">
         <article className="card grid">
-          <h2 style={{ margin: 0 }}>Profile</h2>
+          <h2 style={{ margin: 0 }}>{t("profile")}</h2>
           <input
             className="input"
-            placeholder="Enter username"
+            placeholder={t("enter_username")}
             value={username}
             onChange={(e) => handleUsernameChange(e.target.value)}
           />
           <div className="row">
-            <button type="button" className="btn" onClick={saveNameOnly}>Save Username</button>
-            <Link className="btn secondary" href="/create">Create Quiz Set</Link>
+            <button type="button" className="btn" onClick={saveNameOnly}>{t("save_username")}</button>
+            <Link className="btn secondary" href="/create">{t("create_quiz_set")}</Link>
           </div>
         </article>
 
         <article className="card grid">
-          <h2 style={{ margin: 0 }}>Join Room</h2>
+          <h2 style={{ margin: 0 }}>{t("join_room")}</h2>
           <input
             className="input"
-            placeholder="6-character code"
+            placeholder={t("room_code_placeholder")}
             value={roomCode}
             maxLength={6}
             onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
           />
-          <button type="button" className="btn warn" onClick={continueToRoom}>Enter Match</button>
+          <button type="button" className="btn warn" onClick={continueToRoom}>{t("enter_match")}</button>
         </article>
       </section>
     </main>
